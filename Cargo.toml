@@ -1,0 +1,26 @@
+[package]
+name = "const-config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0", optional = true }
+chrono = { version = "0.4", optional = true }
+const-config-macros = { path = "macros", optional = true }
+
+[dev-dependencies]
+serde = { version = "1.0", features = ["serde_derive"] }
+
+[features]
+default = ["toml", "json", "yaml"]
+serde = ["dep:serde"]
+chrono = ["dep:chrono"]
+toml = ["dep:const-config-macros"]
+json = ["const-config-macros/json"]
+yaml = ["const-config-macros/yaml"]
+
+[workspace]
+members = [
+    "gen",
+    "macros"
+]

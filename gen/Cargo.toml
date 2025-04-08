@@ -1,0 +1,16 @@
+[package]
+name = "const-config-gen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = "2.0"
+toml = { version = "0.8", optional = true, features = ["parse", "preserve_order"] }
+json = { version = "0.12", optional = true }
+yaml-rust2 = { version = "0.10", optional = true }
+
+[features]
+default = ["toml", "json", "yaml"]
+toml = ["dep:toml"]
+json = ["dep:json"]
+yaml = ["dep:yaml-rust2"]
