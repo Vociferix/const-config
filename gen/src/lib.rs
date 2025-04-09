@@ -2,6 +2,7 @@
 #![allow(unused)]
 
 pub(crate) mod phf;
+mod value;
 
 #[cfg(feature = "toml")]
 pub mod toml;
@@ -12,47 +13,7 @@ pub mod json;
 #[cfg(feature = "yaml")]
 pub mod yaml;
 
-#[derive(Debug, Clone)]
-pub(crate) enum Value {
-    Null,
-    Bool(bool),
-    UInt(u64),
-    Int(i64),
-    Float(f64),
-    Time(Time),
-    DateTime(DateTime),
-    Str(String),
-    Array(Vec<Value>),
-    Object(Vec<(String, Value)>),
-    Map(Vec<(Value, Value)>),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Time {
-    pub hour: u8,
-    pub minute: u8,
-    pub second: u8,
-    pub nanosecond: u32,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Date {
-    pub year: u16,
-    pub month: u8,
-    pub day: u8,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct DateTime {
-    pub date: Date,
-    pub time: Option<OffsetTime>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct OffsetTime {
-    pub time: Time,
-    pub offset_minutes: Option<i16>,
-}
+pub use value::*;
 
 #[cfg(feature = "toml")]
 pub fn generate_from_toml<I, O>(input_path: I, output_path: O) -> Result<(), toml::Error>
@@ -81,7 +42,7 @@ where
     gen_fs(input_path, output_path, yaml::generate)
 }
 
-pub(crate) fn generate<O>(value: Value, mut output: O) -> std::io::Result<()>
+pub fn generate<O>(value: Value, mut output: O) -> std::io::Result<()>
 where
     O: std::io::Write,
 {
@@ -207,6 +168,11 @@ where
         Value::Str(value) => {
             write!(output, "::const_config::Value::<'static>::Str(")?;
             write_str(output, &value)?;
+            write!(output, ")")
+        }
+        Value::Bytes(value) => {
+            write!(output, "::const_config::Value::<'static>::Bytes(")?;
+            write_bytes(output, &value)?;
             write!(output, ")")
         }
         Value::Array(value) => {
@@ -364,6 +330,45 @@ where
                     write!(output, "\\u{{{:04x}}}", ch as u32)?;
                 } else {
                     write!(output, "{}", ch)?;
+                }
+            }
+        }
+    }
+    write!(output, "\"")
+}
+
+fn write_bytes<O>(output: &mut O, b: &[u8]) -> std::io::Result<()>
+where
+    O: std::io::Write,
+{
+    write!(output, "b\"")?;
+    for byte in b {
+        match *byte {
+            b'\0' => {
+                write!(output, "\\0")?;
+            }
+            b'\t' => {
+                write!(output, "\\t")?;
+            }
+            b'\n' => {
+                write!(output, "\\n")?;
+            }
+            b'\r' => {
+                write!(output, "\\r")?;
+            }
+            b'"' => {
+                write!(output, "\\\"")?;
+            }
+            b'\\' => {
+                write!(output, "\\\\")?;
+            }
+            _ => {
+                if byte.is_ascii_control() || *byte >= 0x80 {
+                    write!(output, "\\x{:02x}", *byte)?;
+                } else if let Some(ch) = char::from_u32(*byte as u32) {
+                    write!(output, "{}", ch)?;
+                } else {
+                    write!(output, "\\x{:02x}", *byte)?;
                 }
             }
         }

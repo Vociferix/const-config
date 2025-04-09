@@ -93,8 +93,9 @@ fn value_hash(param: u32, key: &Value) -> u32 {
             }
         }
         Value::Str(s) => hash_combine([8, jenkins_hash(h, s.as_bytes())]),
+        Value::Bytes(b) => hash_combine([9, jenkins_hash(h, b)]),
         Value::Array(array) => {
-            let mut h = hash_combine([9, h]);
+            let mut h = hash_combine([10, h]);
             let mut idx = 0usize;
             while idx < array.len() {
                 h = value_hash(h, &array[idx]);
@@ -103,7 +104,7 @@ fn value_hash(param: u32, key: &Value) -> u32 {
             h
         }
         Value::Object(obj) => {
-            let mut h = hash_combine([10, h]);
+            let mut h = hash_combine([11, h]);
             let mut idx = 0usize;
             while idx < obj.len() {
                 let entry = &obj[idx];
@@ -114,7 +115,7 @@ fn value_hash(param: u32, key: &Value) -> u32 {
             h
         }
         Value::Map(map) => {
-            let mut h = hash_combine([11, h]);
+            let mut h = hash_combine([12, h]);
             let mut idx = 0usize;
             while idx < map.len() {
                 let entry = &map[idx];

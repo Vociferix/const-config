@@ -171,6 +171,7 @@ pub enum Value<'a> {
     Time(Time),
     DateTime(DateTime),
     Str(&'a str),
+    Bytes(&'a [u8]),
     Array(&'a [Value<'a>]),
     Object(Object<'a>),
     Map(Map<'a>),
@@ -274,8 +275,7 @@ const fn hash_combine<const COUNT: usize>(hashes: [u32; COUNT]) -> u32 {
     h
 }
 
-const fn str_eq(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
+const fn bytes_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -287,6 +287,10 @@ const fn str_eq(a: &str, b: &str) -> bool {
         idx += 1;
     }
     true
+}
+
+const fn str_eq(a: &str, b: &str) -> bool {
+    bytes_eq(a.as_bytes(), b.as_bytes())
 }
 
 impl<'a> Object<'a> {
@@ -419,8 +423,9 @@ impl<'a> Map<'a> {
                 }
             }
             Value::Str(s) => hash_combine([8, jenkins_hash(h, s.as_bytes())]),
+            Value::Bytes(b) => hash_combine([9, jenkins_hash(h, b)]),
             Value::Array(array) => {
-                let mut h = hash_combine([9, h]);
+                let mut h = hash_combine([10, h]);
                 let mut idx = 0usize;
                 while idx < array.len() {
                     h = Self::hash(h, &array[idx]);
@@ -429,7 +434,7 @@ impl<'a> Map<'a> {
                 h
             }
             Value::Object(obj) => {
-                let mut h = hash_combine([10, h]);
+                let mut h = hash_combine([11, h]);
                 let mut idx = 0usize;
                 while idx < obj.len() {
                     let entry = &obj.entries[idx];
@@ -440,7 +445,7 @@ impl<'a> Map<'a> {
                 h
             }
             Value::Map(map) => {
-                let mut h = hash_combine([11, h]);
+                let mut h = hash_combine([12, h]);
                 let mut idx = 0usize;
                 while idx < map.len() {
                     let entry = &map.entries[idx];
@@ -503,6 +508,7 @@ impl<'a> Map<'a> {
                     }
             }
             (Value::Str(lhs), Value::Str(rhs)) => str_eq(*lhs, *rhs),
+            (Value::Bytes(lhs), Value::Bytes(rhs)) => bytes_eq(*lhs, *rhs),
             (Value::Array(lhs), Value::Array(rhs)) => {
                 lhs.len() == rhs.len() && {
                     let mut ret = true;
@@ -656,6 +662,10 @@ impl<'a> Map<'a> {
         self.try_get(&Value::Str(key))
     }
 
+    pub const fn try_get_bytes(&self, key: &[u8]) -> Option<&'a Value<'a>> {
+        self.try_get(&Value::Bytes(key))
+    }
+
     pub const fn try_get_time(&self, key: Time) -> Option<&'a Value<'a>> {
         self.try_get(&Value::Time(key))
     }
@@ -730,6 +740,10 @@ impl<'a> Map<'a> {
 
     pub const fn get_str(&self, key: &str) -> &'a Value<'a> {
         self.try_get_str(key).unwrap()
+    }
+
+    pub const fn get_bytes(&self, key: &[u8]) -> &'a Value<'a> {
+        self.try_get_bytes(key).unwrap()
     }
 
     pub const fn get_time(&self, key: Time) -> &'a Value<'a> {
@@ -1423,6 +1437,7 @@ impl<'a> serde::Serialize for Value<'a> {
             Self::Time(value) => serde::Serialize::serialize(value, serializer),
             Self::DateTime(value) => serde::Serialize::serialize(value, serializer),
             Self::Str(value) => serializer.serialize_str(value),
+            Self::Bytes(value) => serializer.serialize_bytes(value),
             Self::Array(value) => {
                 if value.is_empty() {
                     serializer.serialize_unit()
@@ -1479,6 +1494,10 @@ impl<'a> Value<'a> {
 
     pub const fn is_str(&self) -> bool {
         matches!(self, Self::Str(_))
+    }
+
+    pub const fn is_bytes(&self) -> bool {
+        matches!(self, Self::Bytes(_))
     }
 
     pub const fn is_array(&self) -> bool {
@@ -1714,6 +1733,22 @@ impl<'a> Value<'a> {
     pub const fn try_as_str(&self) -> Option<&'a str> {
         if let Value::Str(s) = self {
             Some(s)
+        } else if let Value::Bytes(b) = self {
+            if let Ok(s) = core::str::from_utf8(b) {
+                Some(s)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub const fn try_as_bytes(&self) -> Option<&'a [u8]> {
+        if let Value::Bytes(b) = self {
+            Some(b)
+        } else if let Value::Str(s) = self {
+            Some(s.as_bytes())
         } else {
             None
         }
@@ -1848,6 +1883,10 @@ impl<'a> Value<'a> {
         self.try_as_str().unwrap()
     }
 
+    pub const fn as_bytes(&self) -> &'a [u8] {
+        self.try_as_bytes().unwrap()
+    }
+
     pub const fn as_array(&self) -> &'a [Value<'a>] {
         self.try_as_array().unwrap()
     }
@@ -1868,6 +1907,7 @@ impl<'a> Value<'a> {
             Self::Time(value) => Self::Time(value.copy()),
             Self::DateTime(value) => Self::DateTime(value.copy()),
             Self::Str(value) => Self::Str(*value),
+            Self::Bytes(value) => Self::Bytes(*value),
             Self::Array(value) => Self::Array(*value),
             Self::Object(value) => Self::Object(value.copy()),
             Self::Map(value) => Self::Map(value.copy()),
@@ -2385,6 +2425,7 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
             Value::Time(value) => visitor.visit_string(value.to_string()),
             Value::DateTime(value) => visitor.visit_string(value.to_string()),
             Value::Str(value) => visitor.visit_str(value),
+            Value::Bytes(value) => visitor.visit_bytes(value),
             Value::Array(value) => visitor.visit_seq(DeserArray(value)),
             Value::Object(value) => visitor.visit_map(DeserObject(value.entries)),
             Value::Map(value) => visitor.visit_map(DeserMap(value.entries)),

@@ -140,20 +140,8 @@ pub fn include_json(args: TokenStream) -> TokenStream {
 fn yaml_impl(s: &str) -> TokenStream {
     let mut code: Vec<u8> = Vec::new();
     if let Err(err) = const_config_gen::yaml::generate(s.as_bytes(), &mut code) {
-        match err {
-            const_config_gen::yaml::Error::IO(err) => {
-                let err = err.to_string();
-                return quote! { ::core::compile_error!(#err) }.into();
-            }
-            const_config_gen::yaml::Error::Scan(err) => {
-                let err = err.to_string();
-                return quote! { ::core::compile_error!(#err) }.into();
-            }
-            const_config_gen::yaml::Error::Decode(msg) => {
-                let err = msg.to_owned();
-                return quote! { ::core::compile_error!(#err) }.into();
-            }
-        }
+        let err = err.to_string();
+        return quote! { ::core::compile_error!(#err) }.into();
     }
 
     match String::from_utf8(code) {

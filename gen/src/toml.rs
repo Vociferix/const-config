@@ -1,3 +1,9 @@
+// We don't use Value's Deserialize implementation because
+// we wouldn't be able to deserialize a Time or DateTime.
+// Instead, we use `toml::from_str` to parse the TOML text
+// and then convert to a `crate::Value` to ensure that
+// Times and DateTimes are preserved.
+
 use crate::{Date, DateTime, OffsetTime, Time, Value};
 use std::io::{self, Read, Write};
 use thiserror::Error;
