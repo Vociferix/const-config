@@ -3,9 +3,14 @@ name = "const-config-gen"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "const-config-gen"
+required-features = ["cli"]
+
 [dependencies]
 thiserror = "2.0"
 serde = "1.0"
+clap = { version = "4.5", optional = true, features = ["derive"] }
 toml = { version = "0.8", optional = true, features = ["parse", "preserve_order"] }
 serde_json = { version = "1.0", optional = true }
 serde_yml = { version = "0.0.12", optional = true }
@@ -22,7 +27,8 @@ flexbuffers = { version = "25.2", optional = true }
 
 [features]
 default = []
-all = [
+cli = ["dep:clap"]
+all-formats = [
     "toml",
     "json",
     "yaml",
