@@ -53,7 +53,7 @@ impl<'de> Deserialize<'de> for Value {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_any(ValueVisitor)
+        deserializer.deserialize_option(ValueVisitor)
     }
 }
 

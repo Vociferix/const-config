@@ -14,7 +14,17 @@ litrs = "0.4"
 const-config-gen = { path = "../gen", default-features = false }
 
 [features]
-default = ["toml", "json", "yaml"]
+default = []
 toml = ["const-config-gen/toml"]
 json = ["const-config-gen/json"]
 yaml = ["const-config-gen/yaml"]
+ron = ["const-config-gen/ron"]
+json5 = ["const-config-gen/json5"]
+s-expr = ["const-config-gen/s-expr"]
+hjson = ["const-config-gen/hjson"]
+csv = ["const-config-gen/csv"]
+cbor = ["const-config-gen/cbor"]
+msgpack = ["const-config-gen/msgpack"]
+pickle = ["const-config-gen/pickle"]
+bson = ["const-config-gen/bson"]
+flexbuffers = ["const-config-gen/flexbuffers"]

@@ -163,6 +163,66 @@ pub use const_config_macros::from_yaml;
 #[cfg(feature = "yaml")]
 pub use const_config_macros::include_yaml;
 
+#[cfg(feature = "ron")]
+pub use const_config_macros::from_ron;
+
+#[cfg(feature = "ron")]
+pub use const_config_macros::include_ron;
+
+#[cfg(feature = "json5")]
+pub use const_config_macros::from_json5;
+
+#[cfg(feature = "json5")]
+pub use const_config_macros::include_json5;
+
+#[cfg(feature = "s-expr")]
+pub use const_config_macros::from_s_expr;
+
+#[cfg(feature = "s-expr")]
+pub use const_config_macros::include_s_expr;
+
+#[cfg(feature = "hjson")]
+pub use const_config_macros::from_hjson;
+
+#[cfg(feature = "hjson")]
+pub use const_config_macros::include_hjson;
+
+#[cfg(feature = "csv")]
+pub use const_config_macros::from_csv;
+
+#[cfg(feature = "csv")]
+pub use const_config_macros::include_csv;
+
+#[cfg(feature = "cbor")]
+pub use const_config_macros::from_cbor;
+
+#[cfg(feature = "cbor")]
+pub use const_config_macros::include_cbor;
+
+#[cfg(feature = "msgpack")]
+pub use const_config_macros::from_msgpack;
+
+#[cfg(feature = "msgpack")]
+pub use const_config_macros::include_msgpack;
+
+#[cfg(feature = "pickle")]
+pub use const_config_macros::from_pickle;
+
+#[cfg(feature = "pickle")]
+pub use const_config_macros::include_pickle;
+
+#[cfg(feature = "bson")]
+pub use const_config_macros::from_bson;
+
+#[cfg(feature = "bson")]
+pub use const_config_macros::include_bson;
+
+#[cfg(feature = "flexbuffers")]
+pub use const_config_macros::from_flexbuffers;
+
+#[cfg(feature = "flexbuffers")]
+pub use const_config_macros::include_flexbuffers;
+
 #[derive(Debug, Clone, Copy)]
 pub enum Value<'a> {
     Null,

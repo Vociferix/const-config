@@ -13,6 +13,36 @@ pub mod json;
 #[cfg(feature = "yaml")]
 pub mod yaml;
 
+#[cfg(feature = "ron")]
+pub mod ron;
+
+#[cfg(feature = "json5")]
+pub mod json5;
+
+#[cfg(feature = "s-expr")]
+pub mod s_expr;
+
+#[cfg(feature = "hjson")]
+pub mod hjson;
+
+#[cfg(feature = "csv")]
+pub mod csv;
+
+#[cfg(feature = "cbor")]
+pub mod cbor;
+
+#[cfg(feature = "msgpack")]
+pub mod msgpack;
+
+#[cfg(feature = "pickle")]
+pub mod pickle;
+
+#[cfg(feature = "bson")]
+pub mod bson;
+
+#[cfg(feature = "flexbuffers")]
+pub mod flexbuffers;
+
 pub use value::*;
 
 #[cfg(feature = "toml")]
@@ -40,6 +70,99 @@ where
     O: AsRef<std::path::Path>,
 {
     gen_fs(input_path, output_path, yaml::generate)
+}
+
+#[cfg(feature = "ron")]
+pub fn generate_from_ron<I, O>(input_path: I, output_path: O) -> Result<(), ron::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, ron::generate)
+}
+
+#[cfg(feature = "json5")]
+pub fn generate_from_json5<I, O>(input_path: I, output_path: O) -> Result<(), json5::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, json5::generate)
+}
+
+#[cfg(feature = "s-expr")]
+pub fn generate_from_s_expr<I, O>(input_path: I, output_path: O) -> Result<(), s_expr::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, s_expr::generate)
+}
+
+#[cfg(feature = "hjson")]
+pub fn generate_from_hjson<I, O>(input_path: I, output_path: O) -> Result<(), hjson::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, hjson::generate)
+}
+
+#[cfg(feature = "csv")]
+pub fn generate_from_csv<I, O>(input_path: I, output_path: O) -> Result<(), csv::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, csv::generate)
+}
+
+#[cfg(feature = "cbor")]
+pub fn generate_from_cbor<I, O>(input_path: I, output_path: O) -> Result<(), cbor::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, cbor::generate)
+}
+
+#[cfg(feature = "msgpack")]
+pub fn generate_from_msgpack<I, O>(input_path: I, output_path: O) -> Result<(), msgpack::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, msgpack::generate)
+}
+
+#[cfg(feature = "pickle")]
+pub fn generate_from_pickle<I, O>(input_path: I, output_path: O) -> Result<(), pickle::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, pickle::generate)
+}
+
+#[cfg(feature = "bson")]
+pub fn generate_from_bson<I, O>(input_path: I, output_path: O) -> Result<(), bson::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, bson::generate)
+}
+
+#[cfg(feature = "flexbuffers")]
+pub fn generate_from_flexbuffers<I, O>(
+    input_path: I,
+    output_path: O,
+) -> Result<(), flexbuffers::Error>
+where
+    I: AsRef<std::path::Path>,
+    O: AsRef<std::path::Path>,
+{
+    gen_fs(input_path, output_path, flexbuffers::generate)
 }
 
 pub fn generate<O>(value: Value, mut output: O) -> std::io::Result<()>

@@ -2,8 +2,9 @@
 
 `const-config` is a Rust crate for compiled-in application configuration.
 
-This crate takes configuration defined in TOML, JSON, or YAML formats and
-produces a `const` object that a crate can query even in `const` contexts.
+This crate takes configuration or date defined in a variety of possible
+formats and produces a `const` object that a crate can query even in `const`
+contexts.
 
 This can be used to simplify tuning your application or baking in data.
 
@@ -76,3 +77,18 @@ fn main() {
     }
 }
 ```
+
+## Supported Formats
+* TOML
+* JSON
+* YAML
+* RON
+* JSON5
+* S-Expressions
+* HJSON
+* CSV
+* CBOR
+* MessagePack
+* Pickle
+* BSON
+* FlexBuffers

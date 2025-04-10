@@ -12,12 +12,22 @@ const-config-macros = { path = "macros", optional = true }
 serde = { version = "1.0", features = ["serde_derive"] }
 
 [features]
-default = ["toml", "json", "yaml"]
+default = []
 serde = ["dep:serde"]
 chrono = ["dep:chrono"]
-toml = ["dep:const-config-macros"]
+toml = ["const-config-macros/toml"]
 json = ["const-config-macros/json"]
 yaml = ["const-config-macros/yaml"]
+ron = ["const-config-macros/ron"]
+json5 = ["const-config-macros/json5"]
+s-expr = ["const-config-macros/s-expr"]
+hjson = ["const-config-macros/hjson"]
+csv = ["const-config-macros/csv"]
+cbor = ["const-config-macros/cbor"]
+msgpack = ["const-config-macros/msgpack"]
+pickle = ["const-config-macros/pickle"]
+bson = ["const-config-macros/bson"]
+flexbuffers = ["const-config-macros/flexbuffers"]
 
 [workspace]
 members = [
