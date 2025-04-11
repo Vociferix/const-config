@@ -170,8 +170,9 @@ where
     O: std::io::Write,
 {
     write!(output, "const {{\n")?;
+    do_indent(&mut output, 1)?;
     generate_impl(value, &mut output, 1)?;
-    write!(output, "}}")
+    write!(output, "\n}}")
 }
 
 fn gen_fs<I, O, F, E>(input_path: I, output_path: O, f: F) -> Result<(), E>
@@ -281,7 +282,7 @@ where
                     write!(output, "offset_minutes: ::core::option::Option::None,\n")?;
                 }
                 do_indent(output, indent + 1)?;
-                write!(output, "}},\n")?;
+                write!(output, "}}),\n")?;
             } else {
                 write!(output, "time: ::core::option::Option::None,\n")?;
             }
@@ -305,19 +306,20 @@ where
                     "::const_config::Value::<'static>::Array(const {{ &[] }})"
                 )
             } else {
-                write!(
-                    output,
-                    "::const_config::Value::<'static>::Array(const {{ &[\n"
-                )?;
+                write!(output, "::const_config::Value::<'static>::Array(const {{\n")?;
+                do_indent(output, indent + 1)?;
+                write!(output, "&[\n")?;
 
                 for elem in value {
-                    do_indent(output, indent + 1)?;
-                    generate_impl(elem, output, indent + 1)?;
+                    do_indent(output, indent + 2)?;
+                    generate_impl(elem, output, indent + 2)?;
                     write!(output, ",\n")?;
                 }
 
+                do_indent(output, indent + 1)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent)?;
-                write!(output, "] }})")
+                write!(output, "}})")
             }
         }
         Value::Object(value) => {
@@ -333,35 +335,47 @@ where
                     "::const_config::Value::<'static>::Object(::const_config::Object::<'static>::new(\n"
                 )?;
                 do_indent(output, indent + 1)?;
-                write!(output, "const {{ &[\n")?;
+                write!(output, "const {{\n")?;
+                do_indent(output, indent + 2)?;
+                write!(output, "&[\n")?;
                 for entry in value {
-                    do_indent(output, indent + 2)?;
+                    do_indent(output, indent + 3)?;
                     write!(output, "(")?;
                     write_str(output, &entry.0)?;
                     write!(output, ", ")?;
-                    generate_impl(entry.1, output, indent + 2)?;
+                    generate_impl(entry.1, output, indent + 3)?;
                     write!(output, "),\n")?;
                 }
+                do_indent(output, indent + 2)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent + 1)?;
-                write!(output, "] }},\n")?;
+                write!(output, "}},\n")?;
 
                 do_indent(output, indent + 1)?;
-                write!(output, "const {{ &[\n")?;
+                write!(output, "const {{\n")?;
+                do_indent(output, indent + 2)?;
+                write!(output, "&[\n")?;
                 for param in &phf.params {
-                    do_indent(output, indent + 2)?;
+                    do_indent(output, indent + 3)?;
                     write!(output, "{},\n", *param)?;
                 }
+                do_indent(output, indent + 2)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent + 1)?;
-                write!(output, "] }},\n")?;
+                write!(output, "}},\n")?;
 
                 do_indent(output, indent + 1)?;
-                write!(output, "const {{ &[\n")?;
+                write!(output, "const {{\n")?;
+                do_indent(output, indent + 2)?;
+                write!(output, "&[\n")?;
                 for value in &phf.values {
-                    do_indent(output, indent + 2)?;
+                    do_indent(output, indent + 3)?;
                     write!(output, "{},\n", *value)?;
                 }
+                do_indent(output, indent + 2)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent + 1)?;
-                write!(output, "] }},\n")?;
+                write!(output, "}},\n")?;
 
                 do_indent(output, indent)?;
                 write!(output, "))")
@@ -380,39 +394,51 @@ where
                     "::const_config::Value::<'static>::Map(::const_config::Map::<'static>::new(\n"
                 )?;
                 do_indent(output, indent + 1)?;
-                write!(output, "const {{ &[\n")?;
+                write!(output, "const {{\n")?;
+                do_indent(output, indent + 2)?;
+                write!(output, "&[\n")?;
                 for entry in value {
-                    do_indent(output, indent + 2)?;
+                    do_indent(output, indent + 3)?;
                     write!(output, "(\n")?;
-                    do_indent(output, indent + 3)?;
-                    generate_impl(entry.0, output, indent + 3)?;
+                    do_indent(output, indent + 4)?;
+                    generate_impl(entry.0, output, indent + 4)?;
+                    write!(output, ",\n")?;
+                    do_indent(output, indent + 4)?;
+                    generate_impl(entry.1, output, indent + 4)?;
                     write!(output, ",\n")?;
                     do_indent(output, indent + 3)?;
-                    generate_impl(entry.1, output, indent + 2)?;
-                    write!(output, ",\n")?;
-                    do_indent(output, indent + 2)?;
                     write!(output, "),\n")?;
                 }
+                do_indent(output, indent + 2)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent + 1)?;
-                write!(output, "] }},\n")?;
+                write!(output, "}},\n")?;
 
                 do_indent(output, indent + 1)?;
-                write!(output, "const {{ &[\n")?;
+                write!(output, "const {{\n")?;
+                do_indent(output, indent + 2)?;
+                write!(output, "&[\n")?;
                 for param in &phf.params {
-                    do_indent(output, indent + 2)?;
+                    do_indent(output, indent + 3)?;
                     write!(output, "{},\n", *param)?;
                 }
+                do_indent(output, indent + 2)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent + 1)?;
-                write!(output, "] }},\n")?;
+                write!(output, "}},\n")?;
 
                 do_indent(output, indent + 1)?;
-                write!(output, "const {{ &[\n")?;
+                write!(output, "const {{\n")?;
+                do_indent(output, indent + 2)?;
+                write!(output, "&[\n")?;
                 for value in &phf.values {
-                    do_indent(output, indent + 2)?;
+                    do_indent(output, indent + 3)?;
                     write!(output, "{},\n", *value)?;
                 }
+                do_indent(output, indent + 2)?;
+                write!(output, "]\n")?;
                 do_indent(output, indent + 1)?;
-                write!(output, "] }},\n")?;
+                write!(output, "}},\n")?;
 
                 do_indent(output, indent)?;
                 write!(output, "))")
