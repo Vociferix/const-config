@@ -2776,3 +2776,510 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         true
     }
 }
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Deserialize<'a> for Number {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'a>,
+    {
+        struct NumberVisitor;
+
+        impl<'a> serde::de::Visitor<'a> for NumberVisitor {
+            type Value = Number;
+
+            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.write_str("a numeric value")
+            }
+
+            fn visit_i8<E>(self, v: i8) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::Int(v as i64))
+            }
+
+            fn visit_i16<E>(self, v: i16) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::Int(v as i64))
+            }
+
+            fn visit_i32<E>(self, v: i32) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::Int(v as i64))
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::Int(v))
+            }
+
+            fn visit_i128<E>(self, v: i128) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                if v < (i64::MIN as i128) || v > (i64::MAX as i128) {
+                    struct OutOfRange(i128);
+
+                    impl core::fmt::Display for OutOfRange {
+                        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                            write!(f, "i128 value {} is too large", self.0)
+                        }
+                    }
+
+                    Err(E::custom(OutOfRange(v)))
+                } else {
+                    Ok(Number::Int(v as i64))
+                }
+            }
+
+            fn visit_u8<E>(self, v: u8) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::UInt(v as u64))
+            }
+
+            fn visit_u16<E>(self, v: u16) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::UInt(v as u64))
+            }
+
+            fn visit_u32<E>(self, v: u32) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::UInt(v as u64))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::UInt(v))
+            }
+
+            fn visit_u128<E>(self, v: u128) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                if v > (u64::MAX as u128) {
+                    struct OutOfRange(u128);
+
+                    impl core::fmt::Display for OutOfRange {
+                        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                            write!(f, "u128 value {} is too large", self.0)
+                        }
+                    }
+
+                    Err(E::custom(OutOfRange(v)))
+                } else {
+                    Ok(Number::UInt(v as u64))
+                }
+            }
+
+            fn visit_f32<E>(self, v: f32) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::Float(v as f64))
+            }
+
+            fn visit_f64<E>(self, v: f64) -> Result<Number, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Number::Float(v))
+            }
+        }
+
+        deserializer.deserialize_any(NumberVisitor)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Deserialize<'a> for Date {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'a>,
+    {
+        struct DateVisitor;
+
+        impl<'a> serde::de::Visitor<'a> for DateVisitor {
+            type Value = Date;
+
+            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.write_str("a date")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Date, E>
+            where
+                E: serde::de::Error,
+            {
+                let mut iter = v.split('-');
+                let Some(year) = iter.next() else {
+                    return Err(E::custom("invalid date string"));
+                };
+                let Ok(year) = year.parse() else {
+                    return Err(E::custom("invalid date string"));
+                };
+                let Some(month) = iter.next() else {
+                    return Err(E::custom("invalid date string"));
+                };
+                let Ok(month) = month.parse() else {
+                    return Err(E::custom("invalid date string"));
+                };
+                let Some(day) = iter.next() else {
+                    return Err(E::custom("invalid date string"));
+                };
+                let Ok(day) = day.parse() else {
+                    return Err(E::custom("invalid date string"));
+                };
+                Ok(Date { year, month, day })
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Date, E>
+            where
+                E: serde::de::Error,
+            {
+                if let Ok(v) = core::str::from_utf8(v) {
+                    self.visit_str(v)
+                } else {
+                    Err(E::custom("invalid date string"))
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Date, A::Error>
+            where
+                A: serde::de::MapAccess<'a>,
+            {
+                enum Field {
+                    Year,
+                    Month,
+                    Day,
+                }
+
+                impl<'a> serde::Deserialize<'a> for Field {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where
+                        D: serde::Deserializer<'a>,
+                    {
+                        struct FieldVisitor;
+
+                        impl<'a> serde::de::Visitor<'a> for FieldVisitor {
+                            type Value = Field;
+
+                            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                                f.write_str("'year', 'month', or 'day'")
+                            }
+
+                            fn visit_str<E>(self, v: &str) -> Result<Field, E>
+                            where
+                                E: serde::de::Error,
+                            {
+                                match v {
+                                    "year" => Ok(Field::Year),
+                                    "month" => Ok(Field::Month),
+                                    "day" => Ok(Field::Day),
+                                    _ => Err(E::unknown_field(v, &["year", "month", "day"])),
+                                }
+                            }
+                        }
+
+                        deserializer.deserialize_identifier(FieldVisitor)
+                    }
+                }
+
+                let mut year: Option<u16> = None;
+                let mut month: Option<u8> = None;
+                let mut day: Option<u8> = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::Year => {
+                            if year.is_none() {
+                                year = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("year"));
+                            }
+                        }
+                        Field::Month => {
+                            if month.is_none() {
+                                month = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("month"));
+                            }
+                        }
+                        Field::Day => {
+                            if day.is_none() {
+                                day = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("day"));
+                            }
+                        }
+                    }
+                }
+
+                let Some(year) = year else {
+                    return Err(serde::de::Error::missing_field("year"));
+                };
+                let Some(month) = month else {
+                    return Err(serde::de::Error::missing_field("month"));
+                };
+                let Some(day) = day else {
+                    return Err(serde::de::Error::missing_field("day"));
+                };
+
+                Ok(Date { year, month, day })
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Date, A::Error>
+            where
+                A: serde::de::SeqAccess<'a>,
+            {
+                let Some(year) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(0, &self));
+                };
+                let Some(month) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(1, &self));
+                };
+                let Some(day) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(2, &self));
+                };
+                let None = seq.next_element::<u8>()? else {
+                    return Err(serde::de::Error::invalid_length(4, &self));
+                };
+                Ok(Date { year, month, day })
+            }
+        }
+
+        deserializer.deserialize_any(DateVisitor)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Deserialize<'a> for Time {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'a>,
+    {
+        struct TimeVisitor;
+
+        impl<'a> serde::de::Visitor<'a> for TimeVisitor {
+            type Value = Time;
+
+            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.write_str("a time")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Time, E>
+            where
+                E: serde::de::Error,
+            {
+                let mut iter = v.split(':');
+                let Some(hour) = iter.next() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let Ok(hour) = hour.parse() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let Some(minute) = iter.next() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let Ok(minute) = minute.parse() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let Some(sec) = iter.next() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let mut iter = sec.split('.');
+                let Some(second) = iter.next() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let Ok(second) = second.parse() else {
+                    return Err(E::custom("invalid time string"));
+                };
+                let nanosecond = if let Some(nano) = iter.next() {
+                    let mut val = 0u32;
+                    let mut digits = 0usize;
+                    for ch in nano.chars() {
+                        if ch < '0' || ch > '9' {
+                            return Err(E::custom("invalid time string"));
+                        }
+                        if digits == 9 {
+                            continue;
+                        }
+                        digits += 1;
+                        val = (val * 10) + ((ch as u32) - ('0' as u32));
+                    }
+                    while digits < 9 {
+                        digits += 1;
+                        val *= 10;
+                    }
+                    val
+                } else {
+                    0u32
+                };
+                Ok(Time {
+                    hour,
+                    minute,
+                    second,
+                    nanosecond,
+                })
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Time, E>
+            where
+                E: serde::de::Error,
+            {
+                if let Ok(v) = core::str::from_utf8(v) {
+                    self.visit_str(v)
+                } else {
+                    Err(E::custom("invalid time string"))
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Time, A::Error>
+            where
+                A: serde::de::MapAccess<'a>,
+            {
+                enum Field {
+                    Hour,
+                    Minute,
+                    Second,
+                    Nanosecond,
+                }
+
+                impl<'a> serde::Deserialize<'a> for Field {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where
+                        D: serde::Deserializer<'a>,
+                    {
+                        struct FieldVisitor;
+
+                        impl<'a> serde::de::Visitor<'a> for FieldVisitor {
+                            type Value = Field;
+
+                            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                                f.write_str("'hour', 'minute', 'second', or 'nanosecond'")
+                            }
+
+                            fn visit_str<E>(self, v: &str) -> Result<Field, E>
+                            where
+                                E: serde::de::Error,
+                            {
+                                match v {
+                                    "hour" => Ok(Field::Hour),
+                                    "minute" => Ok(Field::Minute),
+                                    "second" => Ok(Field::Second),
+                                    "nanosecond" => Ok(Field::Nanosecond),
+                                    _ => Err(E::unknown_field(
+                                        v,
+                                        &["hour", "minute", "second", "nanosecond"],
+                                    )),
+                                }
+                            }
+                        }
+
+                        deserializer.deserialize_identifier(FieldVisitor)
+                    }
+                }
+
+                let mut hour: Option<u8> = None;
+                let mut minute: Option<u8> = None;
+                let mut second: Option<u8> = None;
+                let mut nanosecond: Option<u32> = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::Hour => {
+                            if hour.is_none() {
+                                hour = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("hour"));
+                            }
+                        }
+                        Field::Minute => {
+                            if minute.is_none() {
+                                minute = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("minute"));
+                            }
+                        }
+                        Field::Second => {
+                            if second.is_none() {
+                                second = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("second"));
+                            }
+                        }
+                        Field::Nanosecond => {
+                            if nanosecond.is_none() {
+                                nanosecond = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("nanosecond"));
+                            }
+                        }
+                    }
+                }
+
+                let Some(hour) = hour else {
+                    return Err(serde::de::Error::missing_field("hour"));
+                };
+                let Some(minute) = minute else {
+                    return Err(serde::de::Error::missing_field("minute"));
+                };
+                let Some(second) = second else {
+                    return Err(serde::de::Error::missing_field("second"));
+                };
+                let nanosecond = nanosecond.unwrap_or(0);
+
+                Ok(Time {
+                    hour,
+                    minute,
+                    second,
+                    nanosecond,
+                })
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Time, A::Error>
+            where
+                A: serde::de::SeqAccess<'a>,
+            {
+                let Some(hour) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(0, &self));
+                };
+                let Some(minute) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(1, &self));
+                };
+                let Some(second) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(2, &self));
+                };
+                let nanosecond = if let Some(nanosecond) = seq.next_element()? {
+                    let None = seq.next_element::<u8>()? else {
+                        return Err(serde::de::Error::invalid_length(5, &self));
+                    };
+                    nanosecond
+                } else {
+                    0
+                };
+                Ok(Time {
+                    hour,
+                    minute,
+                    second,
+                    nanosecond,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(TimeVisitor)
+    }
+}
