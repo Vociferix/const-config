@@ -50,14 +50,58 @@ fn value_hash(param: u32, key: &Value) -> u32 {
         Value::Null => hash_combine([0, h]),
         Value::Bool(false) => hash_combine([1, h]),
         Value::Bool(true) => hash_combine([2, h]),
-        Value::UInt(val) => hash_combine([3, h, (*val >> 32) as u32, (*val & 0xffffffff) as u32]),
+        Value::UInt(val) => hash_combine([
+            3,
+            h,
+            (*val >> 96) as u32,
+            ((*val >> 64) & 0xffffffff) as u32,
+            ((*val >> 32) & 0xffffffff) as u32,
+            ((*val & 0xffffffff) as u32),
+        ]),
         Value::Int(val) => {
-            let val = u64::from_ne_bytes((*val).to_ne_bytes());
-            hash_combine([4, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+            let seed = if *val < 0 { 4 } else { 3 };
+            let val = u128::from_ne_bytes((*val).to_ne_bytes());
+            hash_combine([
+                seed,
+                h,
+                (val >> 96) as u32,
+                ((val >> 64) & 0xffffffff) as u32,
+                ((val >> 32) & 0xffffffff) as u32,
+                ((val & 0xffffffff) as u32),
+            ])
         }
         Value::Float(val) => {
-            let val = u64::from_ne_bytes((*val).to_ne_bytes());
-            hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+            if *val < 0.0f64 {
+                if ((*val as i128) as f64) == *val {
+                    let val = u128::from_ne_bytes((*val as i128).to_ne_bytes());
+                    hash_combine([
+                        4,
+                        h,
+                        (val >> 96) as u32,
+                        ((val >> 64) & 0xffffffff) as u32,
+                        ((val >> 32) & 0xffffffff) as u32,
+                        ((val & 0xffffffff) as u32),
+                    ])
+                } else {
+                    let val = u64::from_ne_bytes((*val).to_ne_bytes());
+                    hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+                }
+            } else {
+                if ((*val as u128) as f64) == *val {
+                    let val = *val as u128;
+                    hash_combine([
+                        3,
+                        h,
+                        (val >> 96) as u32,
+                        ((val >> 64) & 0xffffffff) as u32,
+                        ((val >> 32) & 0xffffffff) as u32,
+                        ((val & 0xffffffff) as u32),
+                    ])
+                } else {
+                    let val = u64::from_ne_bytes((*val).to_ne_bytes());
+                    hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+                }
+            }
         }
         Value::Date(date) => {
             hash_combine([6, date.year as u32, date.month as u32, date.day as u32])

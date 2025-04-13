@@ -7,8 +7,8 @@ use serde::{
 pub enum Value {
     Null,
     Bool(bool),
-    UInt(u64),
-    Int(i64),
+    UInt(u128),
+    Int(i128),
     Float(f64),
     Date(Date),
     Time(Time),
@@ -65,67 +65,63 @@ impl<'de> Visitor<'de> for ValueVisitor {
     }
 
     fn visit_i8<E: Error>(self, v: i8) -> Result<Self::Value, E> {
-        Ok(Value::Int(v as i64))
+        if v >= 0 {
+            Ok(Value::UInt(v as u128))
+        } else {
+            Ok(Value::Int(v as i128))
+        }
     }
 
     fn visit_i16<E: Error>(self, v: i16) -> Result<Self::Value, E> {
-        Ok(Value::Int(v as i64))
+        if v >= 0 {
+            Ok(Value::UInt(v as u128))
+        } else {
+            Ok(Value::Int(v as i128))
+        }
     }
 
     fn visit_i32<E: Error>(self, v: i32) -> Result<Self::Value, E> {
-        Ok(Value::Int(v as i64))
+        if v >= 0 {
+            Ok(Value::UInt(v as u128))
+        } else {
+            Ok(Value::Int(v as i128))
+        }
     }
 
     fn visit_i64<E: Error>(self, v: i64) -> Result<Self::Value, E> {
-        Ok(Value::Int(v))
+        if v >= 0 {
+            Ok(Value::UInt(v as u128))
+        } else {
+            Ok(Value::Int(v as i128))
+        }
     }
 
     fn visit_i128<E: Error>(self, v: i128) -> Result<Self::Value, E> {
-        if v < (i64::MIN as i128) || v > (i64::MAX as i128) {
-            struct Msg(i128);
-
-            impl std::fmt::Display for Msg {
-                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                    write!(f, "i128 value {} too large to deserialize", self.0)
-                }
-            }
-
-            Err(E::custom(Msg(v)))
+        if v >= 0 {
+            Ok(Value::UInt(v as u128))
         } else {
-            Ok(Value::Int(v as i64))
+            Ok(Value::Int(v))
         }
     }
 
     fn visit_u8<E: Error>(self, v: u8) -> Result<Self::Value, E> {
-        Ok(Value::UInt(v as u64))
+        Ok(Value::UInt(v as u128))
     }
 
     fn visit_u16<E: Error>(self, v: u16) -> Result<Self::Value, E> {
-        Ok(Value::UInt(v as u64))
+        Ok(Value::UInt(v as u128))
     }
 
     fn visit_u32<E: Error>(self, v: u32) -> Result<Self::Value, E> {
-        Ok(Value::UInt(v as u64))
+        Ok(Value::UInt(v as u128))
     }
 
     fn visit_u64<E: Error>(self, v: u64) -> Result<Self::Value, E> {
-        Ok(Value::UInt(v))
+        Ok(Value::UInt(v as u128))
     }
 
     fn visit_u128<E: Error>(self, v: u128) -> Result<Self::Value, E> {
-        if v > (u64::MAX as u128) {
-            struct Msg(u128);
-
-            impl std::fmt::Display for Msg {
-                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                    write!(f, "u128 value {} too large to deserialize", self.0)
-                }
-            }
-
-            Err(E::custom(Msg(v)))
-        } else {
-            Ok(Value::UInt(v as u64))
-        }
+        Ok(Value::UInt(v))
     }
 
     fn visit_f32<E: Error>(self, v: f32) -> Result<Self::Value, E> {

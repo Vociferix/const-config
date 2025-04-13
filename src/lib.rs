@@ -249,8 +249,8 @@ pub enum Value<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Number {
-    UInt(u64),
-    Int(i64),
+    UInt(u128),
+    Int(i128),
     Float(f64),
 }
 
@@ -443,16 +443,58 @@ impl<'a> Map<'a> {
             Value::Null => hash_combine([0, h]),
             Value::Bool(false) => hash_combine([1, h]),
             Value::Bool(true) => hash_combine([2, h]),
-            Value::Number(Number::UInt(val)) => {
-                hash_combine([3, h, (*val >> 32) as u32, (*val & 0xffffffff) as u32])
-            }
+            Value::Number(Number::UInt(val)) => hash_combine([
+                3,
+                h,
+                (*val >> 96) as u32,
+                ((*val >> 64) & 0xffffffff) as u32,
+                ((*val >> 32) & 0xffffffff) as u32,
+                ((*val & 0xffffffff) as u32),
+            ]),
             Value::Number(Number::Int(val)) => {
-                let val = u64::from_ne_bytes((*val).to_ne_bytes());
-                hash_combine([4, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+                let seed = if *val < 0 { 4 } else { 3 };
+                let val = u128::from_ne_bytes((*val).to_ne_bytes());
+                hash_combine([
+                    seed,
+                    h,
+                    (val >> 96) as u32,
+                    ((val >> 64) & 0xffffffff) as u32,
+                    ((val >> 32) & 0xffffffff) as u32,
+                    ((val & 0xffffffff) as u32),
+                ])
             }
             Value::Number(Number::Float(val)) => {
-                let val = u64::from_ne_bytes((*val).to_ne_bytes());
-                hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+                if *val < 0.0f64 {
+                    if ((*val as i128) as f64) == *val {
+                        let val = u128::from_ne_bytes((*val as i128).to_ne_bytes());
+                        hash_combine([
+                            4,
+                            h,
+                            (val >> 96) as u32,
+                            ((val >> 64) & 0xffffffff) as u32,
+                            ((val >> 32) & 0xffffffff) as u32,
+                            ((val & 0xffffffff) as u32),
+                        ])
+                    } else {
+                        let val = u64::from_ne_bytes((*val).to_ne_bytes());
+                        hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+                    }
+                } else {
+                    if ((*val as u128) as f64) == *val {
+                        let val = *val as u128;
+                        hash_combine([
+                            3,
+                            h,
+                            (val >> 96) as u32,
+                            ((val >> 64) & 0xffffffff) as u32,
+                            ((val >> 32) & 0xffffffff) as u32,
+                            ((val & 0xffffffff) as u32),
+                        ])
+                    } else {
+                        let val = u64::from_ne_bytes((*val).to_ne_bytes());
+                        hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
+                    }
+                }
             }
             Value::Date(date) => {
                 hash_combine([6, date.year as u32, date.month as u32, date.day as u32])
@@ -527,19 +569,19 @@ impl<'a> Map<'a> {
                 (Number::UInt(lhs), Number::UInt(rhs)) => *lhs == *rhs,
                 (Number::Int(lhs), Number::Int(rhs)) => *lhs == *rhs,
                 (Number::Float(lhs), Number::Float(rhs)) => *lhs == *rhs,
-                (Number::UInt(lhs), Number::Int(rhs)) => *rhs >= 0 && *lhs == (*rhs as u64),
-                (Number::Int(lhs), Number::UInt(rhs)) => *lhs >= 0 && (*lhs as u64) == *rhs,
+                (Number::UInt(lhs), Number::Int(rhs)) => *rhs >= 0 && *lhs == (*rhs as u128),
+                (Number::Int(lhs), Number::UInt(rhs)) => *lhs >= 0 && (*lhs as u128) == *rhs,
                 (Number::UInt(lhs), Number::Float(rhs)) => {
-                    (*lhs == (*lhs as f64 as u64)) && (*lhs as f64) == *rhs
+                    *rhs >= 0.0f64 && (*rhs as u128 as f64) == *rhs && *lhs == (*rhs as u128)
                 }
                 (Number::Float(lhs), Number::UInt(rhs)) => {
-                    (*rhs == (*rhs as f64 as u64)) && *lhs == (*rhs as f64)
+                    *lhs >= 0.0f64 && (*lhs as u128 as f64) == *lhs && (*lhs as u128) == *rhs
                 }
                 (Number::Int(lhs), Number::Float(rhs)) => {
-                    (*lhs == (*lhs as f64 as i64)) && (*lhs as f64) == *rhs
+                    (*rhs as i128 as f64) == *rhs && *lhs == (*rhs as i128)
                 }
                 (Number::Float(lhs), Number::Int(rhs)) => {
-                    (*rhs == (*rhs as f64 as i64)) && *lhs == (*rhs as f64)
+                    (*lhs as i128 as f64) == *lhs && (*lhs as i128) == *rhs
                 }
             },
             (Value::Date(lhs), Value::Date(rhs)) => {
@@ -652,51 +694,43 @@ impl<'a> Map<'a> {
     }
 
     pub const fn try_get_u8(&self, key: u8) -> Option<&'a Value<'a>> {
-        self.try_get_u64(key as u64)
+        self.try_get_u128(key as u128)
     }
 
     pub const fn try_get_u16(&self, key: u16) -> Option<&'a Value<'a>> {
-        self.try_get_u64(key as u64)
+        self.try_get_u128(key as u128)
     }
 
     pub const fn try_get_u32(&self, key: u32) -> Option<&'a Value<'a>> {
-        self.try_get_u64(key as u64)
+        self.try_get_u128(key as u128)
     }
 
     pub const fn try_get_u64(&self, key: u64) -> Option<&'a Value<'a>> {
-        self.try_get_number(Number::UInt(key))
+        self.try_get_u128(key as u128)
     }
 
     pub const fn try_get_u128(&self, key: u128) -> Option<&'a Value<'a>> {
-        if key > (u64::MAX as u128) {
-            None
-        } else {
-            self.try_get_u64(key as u64)
-        }
+        self.try_get_number(Number::UInt(key))
     }
 
     pub const fn try_get_i8(&self, key: i8) -> Option<&'a Value<'a>> {
-        self.try_get_i64(key as i64)
+        self.try_get_i128(key as i128)
     }
 
     pub const fn try_get_i16(&self, key: i16) -> Option<&'a Value<'a>> {
-        self.try_get_i64(key as i64)
+        self.try_get_i128(key as i128)
     }
 
     pub const fn try_get_i32(&self, key: i32) -> Option<&'a Value<'a>> {
-        self.try_get_i64(key as i64)
+        self.try_get_i128(key as i128)
     }
 
     pub const fn try_get_i64(&self, key: i64) -> Option<&'a Value<'a>> {
-        self.try_get_number(Number::Int(key))
+        self.try_get_i128(key as i128)
     }
 
     pub const fn try_get_i128(&self, key: i128) -> Option<&'a Value<'a>> {
-        if key < (i64::MIN as i128) || key > (i64::MAX as i128) {
-            None
-        } else {
-            self.try_get_i64(key as i64)
-        }
+        self.try_get_number(Number::Int(key))
     }
 
     pub const fn try_get_f32(&self, key: f32) -> Option<&'a Value<'a>> {
@@ -932,8 +966,8 @@ impl Number {
 
     pub const fn try_as_u8(&self) -> Option<u8> {
         match self {
-            Self::UInt(value) if *value <= (u8::MAX as u64) => Some(*value as u8),
-            Self::Int(value) if *value >= 0 && *value <= (u8::MAX as i64) => Some(*value as u8),
+            Self::UInt(value) if *value <= (u8::MAX as u128) => Some(*value as u8),
+            Self::Int(value) if *value >= 0 && *value <= (u8::MAX as i128) => Some(*value as u8),
             Self::Float(value) if (*value as u8 as f64) == *value => Some(*value as u8),
             _ => None,
         }
@@ -941,8 +975,8 @@ impl Number {
 
     pub const fn try_as_u16(&self) -> Option<u16> {
         match self {
-            Self::UInt(value) if *value <= (u16::MAX as u64) => Some(*value as u16),
-            Self::Int(value) if *value >= 0 && *value <= (u16::MAX as i64) => Some(*value as u16),
+            Self::UInt(value) if *value <= (u16::MAX as u128) => Some(*value as u16),
+            Self::Int(value) if *value >= 0 && *value <= (u16::MAX as i128) => Some(*value as u16),
             Self::Float(value) if (*value as u16 as f64) == *value => Some(*value as u16),
             _ => None,
         }
@@ -950,8 +984,8 @@ impl Number {
 
     pub const fn try_as_u32(&self) -> Option<u32> {
         match self {
-            Self::UInt(value) if *value <= (u32::MAX as u64) => Some(*value as u32),
-            Self::Int(value) if *value >= 0 && *value <= (u32::MAX as i64) => Some(*value as u32),
+            Self::UInt(value) if *value <= (u32::MAX as u128) => Some(*value as u32),
+            Self::Int(value) if *value >= 0 && *value <= (u32::MAX as i128) => Some(*value as u32),
             Self::Float(value) if (*value as u32 as f64) == *value => Some(*value as u32),
             _ => None,
         }
@@ -959,8 +993,8 @@ impl Number {
 
     pub const fn try_as_u64(&self) -> Option<u64> {
         match self {
-            Self::UInt(value) => Some(*value),
-            Self::Int(value) if *value >= 0 => Some(*value as u64),
+            Self::UInt(value) if *value <= (u64::MAX as u128) => Some(*value as u64),
+            Self::Int(value) if *value >= 0 && *value <= (u64::MAX as i128) => Some(*value as u64),
             Self::Float(value) if (*value as u64 as f64) == *value => Some(*value as u64),
             _ => None,
         }
@@ -968,7 +1002,7 @@ impl Number {
 
     pub const fn try_as_u128(&self) -> Option<u128> {
         match self {
-            Self::UInt(value) => Some(*value as u128),
+            Self::UInt(value) => Some(*value),
             Self::Int(value) if *value >= 0 => Some(*value as u128),
             Self::Float(value) if (*value as u128 as f64) == *value => Some(*value as u128),
             _ => None,
@@ -977,8 +1011,8 @@ impl Number {
 
     pub const fn try_as_i8(&self) -> Option<i8> {
         match self {
-            Self::UInt(value) if *value < (i8::MAX as u64) => Some(*value as i8),
-            Self::Int(value) if *value >= (i8::MIN as i64) && *value <= (i8::MAX as i64) => {
+            Self::UInt(value) if *value < (i8::MAX as u128) => Some(*value as i8),
+            Self::Int(value) if *value >= (i8::MIN as i128) && *value <= (i8::MAX as i128) => {
                 Some(*value as i8)
             }
             Self::Float(value) if (*value as i8 as f64) == *value => Some(*value as i8),
@@ -988,8 +1022,8 @@ impl Number {
 
     pub const fn try_as_i16(&self) -> Option<i16> {
         match self {
-            Self::UInt(value) if *value < (i16::MAX as u64) => Some(*value as i16),
-            Self::Int(value) if *value >= (i16::MIN as i64) && *value <= (i16::MAX as i64) => {
+            Self::UInt(value) if *value < (i16::MAX as u128) => Some(*value as i16),
+            Self::Int(value) if *value >= (i16::MIN as i128) && *value <= (i16::MAX as i128) => {
                 Some(*value as i16)
             }
             Self::Float(value) if (*value as i16 as f64) == *value => Some(*value as i16),
@@ -999,8 +1033,8 @@ impl Number {
 
     pub const fn try_as_i32(&self) -> Option<i32> {
         match self {
-            Self::UInt(value) if *value < (i32::MAX as u64) => Some(*value as i32),
-            Self::Int(value) if *value >= (i32::MIN as i64) && *value <= (i32::MAX as i64) => {
+            Self::UInt(value) if *value < (i32::MAX as u128) => Some(*value as i32),
+            Self::Int(value) if *value >= (i32::MIN as i128) && *value <= (i32::MAX as i128) => {
                 Some(*value as i32)
             }
             Self::Float(value) if (*value as i32 as f64) == *value => Some(*value as i32),
@@ -1010,8 +1044,10 @@ impl Number {
 
     pub const fn try_as_i64(&self) -> Option<i64> {
         match self {
-            Self::UInt(value) if *value < (i64::MAX as u64) => Some(*value as i64),
-            Self::Int(value) => Some(*value),
+            Self::UInt(value) if *value < (i64::MAX as u128) => Some(*value as i64),
+            Self::Int(value) if *value >= (i64::MIN as i128) && *value <= (i64::MAX as i128) => {
+                Some(*value as i64)
+            }
             Self::Float(value) if (*value as i64 as f64) == *value => Some(*value as i64),
             _ => None,
         }
@@ -1019,8 +1055,8 @@ impl Number {
 
     pub const fn try_as_i128(&self) -> Option<i128> {
         match self {
-            Self::UInt(value) => Some(*value as i128),
-            Self::Int(value) => Some(*value as i128),
+            Self::UInt(value) if *value <= (i128::MAX as u128) => Some(*value as i128),
+            Self::Int(value) => Some(*value),
             Self::Float(value) if (*value as i128 as f64) == *value => Some(*value as i128),
             _ => None,
         }
@@ -1470,8 +1506,8 @@ impl serde::Serialize for Number {
         S: serde::Serializer,
     {
         match *self {
-            Self::UInt(value) => serializer.serialize_u64(value),
-            Self::Int(value) => serializer.serialize_i64(value),
+            Self::UInt(value) => serializer.serialize_u128(value),
+            Self::Int(value) => serializer.serialize_i128(value),
             Self::Float(value) => serializer.serialize_f64(value),
         }
     }
@@ -2616,8 +2652,8 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         match self.0 {
             Value::Null => visitor.visit_none(),
             Value::Bool(value) => visitor.visit_bool(value),
-            Value::Number(Number::UInt(value)) => visitor.visit_u64(value),
-            Value::Number(Number::Int(value)) => visitor.visit_i64(value),
+            Value::Number(Number::UInt(value)) => visitor.visit_u128(value),
+            Value::Number(Number::Int(value)) => visitor.visit_i128(value),
             Value::Number(Number::Float(value)) => visitor.visit_f64(value),
             Value::Date(value) => visitor.visit_string(value.to_string()),
             Value::Time(value) => visitor.visit_string(value.to_string()),
@@ -3028,94 +3064,70 @@ impl<'a> serde::Deserialize<'a> for Number {
             where
                 E: serde::de::Error,
             {
-                Ok(Number::Int(v as i64))
+                Ok(Number::Int(v as i128))
             }
 
             fn visit_i16<E>(self, v: i16) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::Int(v as i64))
+                Ok(Number::Int(v as i128))
             }
 
             fn visit_i32<E>(self, v: i32) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::Int(v as i64))
+                Ok(Number::Int(v as i128))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::Int(v))
+                Ok(Number::Int(v as i128))
             }
 
             fn visit_i128<E>(self, v: i128) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                if v < (i64::MIN as i128) || v > (i64::MAX as i128) {
-                    struct OutOfRange(i128);
-
-                    impl core::fmt::Display for OutOfRange {
-                        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                            write!(f, "i128 value {} is too large", self.0)
-                        }
-                    }
-
-                    Err(E::custom(OutOfRange(v)))
-                } else {
-                    Ok(Number::Int(v as i64))
-                }
+                Ok(Number::Int(v))
             }
 
             fn visit_u8<E>(self, v: u8) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::UInt(v as u64))
+                Ok(Number::UInt(v as u128))
             }
 
             fn visit_u16<E>(self, v: u16) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::UInt(v as u64))
+                Ok(Number::UInt(v as u128))
             }
 
             fn visit_u32<E>(self, v: u32) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::UInt(v as u64))
+                Ok(Number::UInt(v as u128))
             }
 
             fn visit_u64<E>(self, v: u64) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Number::UInt(v))
+                Ok(Number::UInt(v as u128))
             }
 
             fn visit_u128<E>(self, v: u128) -> Result<Number, E>
             where
                 E: serde::de::Error,
             {
-                if v > (u64::MAX as u128) {
-                    struct OutOfRange(u128);
-
-                    impl core::fmt::Display for OutOfRange {
-                        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                            write!(f, "u128 value {} is too large", self.0)
-                        }
-                    }
-
-                    Err(E::custom(OutOfRange(v)))
-                } else {
-                    Ok(Number::UInt(v as u64))
-                }
+                Ok(Number::UInt(v))
             }
 
             fn visit_f32<E>(self, v: f32) -> Result<Number, E>

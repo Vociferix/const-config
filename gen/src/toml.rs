@@ -33,7 +33,7 @@ where
 fn transform(toml: &TomlValue) -> Value {
     match toml {
         TomlValue::String(value) => Value::Str(value.clone()),
-        TomlValue::Integer(value) => Value::Int(*value),
+        TomlValue::Integer(value) => Value::Int(*value as i128),
         TomlValue::Float(value) => Value::Float(*value),
         TomlValue::Boolean(value) => Value::Bool(*value),
         TomlValue::Datetime(value) => transform_datetime(value),
