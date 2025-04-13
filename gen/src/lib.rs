@@ -222,6 +222,20 @@ where
             "::const_config::Value::<'static>::Number(::const_config::Number::Float({:.17}))",
             value
         ),
+        Value::Date(value) => {
+            write!(
+                output,
+                "::const_config::Value::<'static>::Date(::const_config::Date {{ \n"
+            )?;
+            do_indent(output, indent + 1)?;
+            write!(output, "year: {},\n", value.year)?;
+            do_indent(output, indent + 1)?;
+            write!(output, "month: {},\n", value.month)?;
+            do_indent(output, indent + 1)?;
+            write!(output, "day: {},\n", value.day)?;
+            do_indent(output, indent)?;
+            write!(output, "}})")
+        }
         Value::Time(value) => {
             write!(
                 output,
@@ -254,37 +268,26 @@ where
             do_indent(output, indent + 1)?;
             write!(output, "}},\n")?;
             do_indent(output, indent + 1)?;
-            if let Some(time) = value.time {
+            write!(output, "time: ::const_config::Time {{\n")?;
+            do_indent(output, indent + 2)?;
+            write!(output, "hour: {},\n", value.time.hour)?;
+            do_indent(output, indent + 2)?;
+            write!(output, "minute: {},\n", value.time.minute)?;
+            do_indent(output, indent + 2)?;
+            write!(output, "second: {},\n", value.time.second)?;
+            do_indent(output, indent + 2)?;
+            write!(output, "nanosecond: {},\n", value.time.nanosecond)?;
+            do_indent(output, indent + 1)?;
+            write!(output, "}},\n")?;
+            do_indent(output, indent + 1)?;
+            if let Some(offset) = value.offset {
                 write!(
                     output,
-                    "time: ::core::option::Option::Some(::const_config::OffsetTime {{\n"
+                    "offset: ::core::option::Option::Some({}),\n",
+                    offset
                 )?;
-                do_indent(output, indent + 2)?;
-                write!(output, "time: ::const_config::Time {{\n")?;
-                do_indent(output, indent + 3)?;
-                write!(output, "hour: {},\n", time.time.hour)?;
-                do_indent(output, indent + 3)?;
-                write!(output, "minute: {},\n", time.time.minute)?;
-                do_indent(output, indent + 3)?;
-                write!(output, "second: {},\n", time.time.second)?;
-                do_indent(output, indent + 3)?;
-                write!(output, "nanosecond: {},\n", time.time.nanosecond)?;
-                do_indent(output, indent + 2)?;
-                write!(output, "}},\n")?;
-                do_indent(output, indent + 2)?;
-                if let Some(offset) = time.offset_minutes {
-                    write!(
-                        output,
-                        "offset_minutes: ::core::option::Option::Some({}),\n",
-                        offset
-                    )?;
-                } else {
-                    write!(output, "offset_minutes: ::core::option::Option::None,\n")?;
-                }
-                do_indent(output, indent + 1)?;
-                write!(output, "}}),\n")?;
             } else {
-                write!(output, "time: ::core::option::Option::None,\n")?;
+                write!(output, "offset: ::core::option::Option::None,\n")?;
             }
             do_indent(output, indent)?;
             write!(output, "}})")

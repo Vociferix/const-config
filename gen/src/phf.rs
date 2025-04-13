@@ -59,8 +59,11 @@ fn value_hash(param: u32, key: &Value) -> u32 {
             let val = u64::from_ne_bytes((*val).to_ne_bytes());
             hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
         }
+        Value::Date(date) => {
+            hash_combine([6, date.year as u32, date.month as u32, date.day as u32])
+        }
         Value::Time(time) => hash_combine([
-            6,
+            7,
             h,
             time.hour as u32,
             time.minute as u32,
@@ -69,33 +72,26 @@ fn value_hash(param: u32, key: &Value) -> u32 {
         ]),
         Value::DateTime(dt) => {
             let h = hash_combine([
-                7,
+                8,
                 h,
                 dt.date.year as u32,
                 dt.date.month as u32,
                 dt.date.day as u32,
+                dt.time.hour as u32,
+                dt.time.minute as u32,
+                dt.time.second as u32,
+                dt.time.nanosecond,
             ]);
-            if let Some(time) = &dt.time {
-                let h = hash_combine([
-                    h,
-                    time.time.hour as u32,
-                    time.time.minute as u32,
-                    time.time.second as u32,
-                    time.time.nanosecond,
-                ]);
-                if let Some(offset) = &time.offset_minutes {
-                    hash_combine([h, u16::from_ne_bytes((*offset).to_ne_bytes()) as u32])
-                } else {
-                    h
-                }
+            if let Some(offset) = &dt.offset {
+                hash_combine([h, 1, u16::from_ne_bytes((*offset).to_ne_bytes()) as u32])
             } else {
-                h
+                hash_combine([h, 0])
             }
         }
-        Value::Str(s) => hash_combine([8, jenkins_hash(h, s.as_bytes())]),
-        Value::Bytes(b) => hash_combine([9, jenkins_hash(h, b)]),
+        Value::Str(s) => hash_combine([9, jenkins_hash(h, s.as_bytes())]),
+        Value::Bytes(b) => hash_combine([10, jenkins_hash(h, b)]),
         Value::Array(array) => {
-            let mut h = hash_combine([10, h]);
+            let mut h = hash_combine([11, h]);
             let mut idx = 0usize;
             while idx < array.len() {
                 h = value_hash(h, &array[idx]);
@@ -104,7 +100,7 @@ fn value_hash(param: u32, key: &Value) -> u32 {
             h
         }
         Value::Object(obj) => {
-            let mut h = hash_combine([11, h]);
+            let mut h = hash_combine([12, h]);
             let mut idx = 0usize;
             while idx < obj.len() {
                 let entry = &obj[idx];
@@ -115,7 +111,7 @@ fn value_hash(param: u32, key: &Value) -> u32 {
             h
         }
         Value::Map(map) => {
-            let mut h = hash_combine([12, h]);
+            let mut h = hash_combine([13, h]);
             let mut idx = 0usize;
             while idx < map.len() {
                 let entry = &map[idx];

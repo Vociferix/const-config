@@ -10,6 +10,7 @@ pub enum Value {
     UInt(u64),
     Int(i64),
     Float(f64),
+    Date(Date),
     Time(Time),
     DateTime(DateTime),
     Str(String),
@@ -37,13 +38,8 @@ pub struct Date {
 #[derive(Debug, Clone, Copy)]
 pub struct DateTime {
     pub date: Date,
-    pub time: Option<OffsetTime>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct OffsetTime {
     pub time: Time,
-    pub offset_minutes: Option<i16>,
+    pub offset: Option<i16>,
 }
 
 struct ValueVisitor;

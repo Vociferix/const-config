@@ -4,7 +4,7 @@
 // and then convert to a `crate::Value` to ensure that
 // Times and DateTimes are preserved.
 
-use crate::{Date, DateTime, OffsetTime, Time, Value};
+use crate::{Date, DateTime, Time, Value};
 use std::io::{self, Read, Write};
 use thiserror::Error;
 use toml::Value as TomlValue;
@@ -76,22 +76,18 @@ fn transform_datetime(dt: &::toml::value::Datetime) -> Value {
                 };
                 Value::DateTime(DateTime {
                     date,
-                    time: Some(OffsetTime {
-                        time,
-                        offset_minutes: Some(offset),
-                    }),
+                    time,
+                    offset: Some(offset),
                 })
             } else {
                 Value::DateTime(DateTime {
                     date,
-                    time: Some(OffsetTime {
-                        time,
-                        offset_minutes: None,
-                    }),
+                    time,
+                    offset: None,
                 })
             }
         } else {
-            Value::DateTime(DateTime { date, time: None })
+            Value::Date(date)
         }
     } else if let Some(time) = &dt.time {
         Value::Time(Time {

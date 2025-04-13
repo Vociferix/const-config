@@ -6,7 +6,16 @@ extern crate alloc;
 use core::fmt::{self, Display};
 
 #[cfg(feature = "serde")]
-use alloc::string::ToString;
+use alloc::{format, string::ToString};
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DateParseError;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TimeParseError;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DateTimeParseError;
 
 /// Build config from inline TOML text.
 ///
@@ -228,6 +237,7 @@ pub enum Value<'a> {
     Null,
     Bool(bool),
     Number(Number),
+    Date(Date),
     Time(Time),
     DateTime(DateTime),
     Str(&'a str),
@@ -244,31 +254,26 @@ pub enum Number {
     Float(f64),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DateTime {
     pub date: Date,
-    pub time: Option<OffsetTime>,
+    pub time: Time,
+    pub offset: Option<i16>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Date {
     pub year: u16,
     pub month: u8,
     pub day: u8,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Time {
     pub hour: u8,
     pub minute: u8,
     pub second: u8,
     pub nanosecond: u32,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct OffsetTime {
-    pub time: Time,
-    pub offset_minutes: Option<i16>,
 }
 
 #[derive(Clone, Copy)]
@@ -449,8 +454,11 @@ impl<'a> Map<'a> {
                 let val = u64::from_ne_bytes((*val).to_ne_bytes());
                 hash_combine([5, h, (val >> 32) as u32, (val & 0xffffffff) as u32])
             }
+            Value::Date(date) => {
+                hash_combine([6, date.year as u32, date.month as u32, date.day as u32])
+            }
             Value::Time(time) => hash_combine([
-                6,
+                7,
                 h,
                 time.hour as u32,
                 time.minute as u32,
@@ -459,33 +467,26 @@ impl<'a> Map<'a> {
             ]),
             Value::DateTime(dt) => {
                 let h = hash_combine([
-                    7,
+                    8,
                     h,
                     dt.date.year as u32,
                     dt.date.month as u32,
                     dt.date.day as u32,
+                    dt.time.hour as u32,
+                    dt.time.minute as u32,
+                    dt.time.second as u32,
+                    dt.time.nanosecond,
                 ]);
-                if let Some(time) = &dt.time {
-                    let h = hash_combine([
-                        h,
-                        time.time.hour as u32,
-                        time.time.minute as u32,
-                        time.time.second as u32,
-                        time.time.nanosecond,
-                    ]);
-                    if let Some(offset) = &time.offset_minutes {
-                        hash_combine([h, u16::from_ne_bytes((*offset).to_ne_bytes()) as u32])
-                    } else {
-                        h
-                    }
+                if let Some(offset) = &dt.offset {
+                    hash_combine([h, 1, u16::from_ne_bytes((*offset).to_ne_bytes()) as u32])
                 } else {
-                    h
+                    hash_combine([h, 0])
                 }
             }
-            Value::Str(s) => hash_combine([8, jenkins_hash(h, s.as_bytes())]),
-            Value::Bytes(b) => hash_combine([9, jenkins_hash(h, b)]),
+            Value::Str(s) => hash_combine([9, jenkins_hash(h, s.as_bytes())]),
+            Value::Bytes(b) => hash_combine([10, jenkins_hash(h, b)]),
             Value::Array(array) => {
-                let mut h = hash_combine([10, h]);
+                let mut h = hash_combine([11, h]);
                 let mut idx = 0usize;
                 while idx < array.len() {
                     h = Self::hash(h, &array[idx]);
@@ -494,7 +495,7 @@ impl<'a> Map<'a> {
                 h
             }
             Value::Object(obj) => {
-                let mut h = hash_combine([11, h]);
+                let mut h = hash_combine([12, h]);
                 let mut idx = 0usize;
                 while idx < obj.len() {
                     let entry = &obj.entries[idx];
@@ -505,7 +506,7 @@ impl<'a> Map<'a> {
                 h
             }
             Value::Map(map) => {
-                let mut h = hash_combine([12, h]);
+                let mut h = hash_combine([13, h]);
                 let mut idx = 0usize;
                 while idx < map.len() {
                     let entry = &map.entries[idx];
@@ -541,6 +542,9 @@ impl<'a> Map<'a> {
                     (*rhs == (*rhs as f64 as i64)) && *lhs == (*rhs as f64)
                 }
             },
+            (Value::Date(lhs), Value::Date(rhs)) => {
+                lhs.year == rhs.year && lhs.month == rhs.month && lhs.day == rhs.day
+            }
             (Value::Time(lhs), Value::Time(rhs)) => {
                 lhs.hour == rhs.hour
                     && lhs.minute == rhs.minute
@@ -551,18 +555,12 @@ impl<'a> Map<'a> {
                 lhs.date.year == rhs.date.year
                     && lhs.date.month == rhs.date.month
                     && lhs.date.day == rhs.date.day
-                    && match (&lhs.time, &rhs.time) {
-                        (Some(lhs), Some(rhs)) => {
-                            lhs.time.hour == rhs.time.hour
-                                && lhs.time.minute == rhs.time.minute
-                                && lhs.time.second == rhs.time.second
-                                && lhs.time.nanosecond == rhs.time.nanosecond
-                                && match (&lhs.offset_minutes, &rhs.offset_minutes) {
-                                    (Some(lhs), Some(rhs)) => *lhs == *rhs,
-                                    (None, None) => true,
-                                    _ => false,
-                                }
-                        }
+                    && lhs.time.hour == rhs.time.hour
+                    && lhs.time.minute == rhs.time.minute
+                    && lhs.time.second == rhs.time.second
+                    && lhs.time.nanosecond == rhs.time.nanosecond
+                    && match (&lhs.offset, &rhs.offset) {
+                        (Some(l), Some(r)) => *l == *r,
                         (None, None) => true,
                         _ => false,
                     }
@@ -724,6 +722,10 @@ impl<'a> Map<'a> {
 
     pub const fn try_get_bytes(&self, key: &[u8]) -> Option<&'a Value<'a>> {
         self.try_get(&Value::Bytes(key))
+    }
+
+    pub const fn try_get_date(&self, key: Date) -> Option<&'a Value<'a>> {
+        self.try_get(&Value::Date(key))
     }
 
     pub const fn try_get_time(&self, key: Time) -> Option<&'a Value<'a>> {
@@ -1117,19 +1119,148 @@ impl Display for Date {
     }
 }
 
+impl Display for DateParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("invalid date string, expected date in YYYY-MM-DD format")
+    }
+}
+
+fn parse_symb(s: &[u8], symb: u8) -> Option<((), &[u8])> {
+    let Some((b, rem)) = s.split_first() else {
+        return None;
+    };
+    if *b != symb {
+        return None;
+    }
+    Some(((), rem))
+}
+
+fn parse_digit(s: &[u8]) -> Option<(u8, &[u8])> {
+    let Some((digit, rem)) = s.split_first() else {
+        return None;
+    };
+    if *digit < b'0' || *digit > b'9' {
+        return None;
+    }
+    Some((*digit - b'0', rem))
+}
+
+fn parse_2_digit_num(s: &[u8]) -> Option<(u8, &[u8])> {
+    let (digit1, s) = parse_digit(s)?;
+    let (digit2, s) = parse_digit(s)?;
+    Some((digit1 * 10 + digit2, s))
+}
+
+fn parse_4_digit_num(s: &[u8]) -> Option<(u16, &[u8])> {
+    let (half1, s) = parse_2_digit_num(s)?;
+    let (half2, s) = parse_2_digit_num(s)?;
+    Some(((half1 as u16) * 100 + (half2 as u16), s))
+}
+
+fn parse_date(s: &[u8]) -> Option<(Date, &[u8])> {
+    let (year, s) = parse_4_digit_num(s)?;
+    let (_, s) = parse_symb(s, b'-')?;
+    let (month, s) = parse_2_digit_num(s)?;
+    let (_, s) = parse_symb(s, b'-')?;
+    let (day, s) = parse_2_digit_num(s)?;
+    Some((Date { year, month, day }, s))
+}
+
+fn parse_time(s: &[u8]) -> Option<(Time, &[u8])> {
+    let (hour, s) = parse_2_digit_num(s)?;
+    let (_, s) = parse_symb(s, b':')?;
+    let (minute, s) = parse_2_digit_num(s)?;
+    let (_, s) = parse_symb(s, b':')?;
+    let (second, s) = parse_2_digit_num(s)?;
+    let (nanosecond, s) = if let Some((_, s)) = parse_symb(s, b'.') {
+        let mut s = s;
+        let mut nano = 0u32;
+        let mut count = 0usize;
+        loop {
+            if let Some((digit, rem)) = parse_digit(s) {
+                count += 1;
+                if count <= 9 {
+                    nano = (nano * 10) + (digit as u32);
+                }
+                s = rem;
+            } else {
+                break;
+            }
+        }
+        while count < 9 {
+            nano *= 10;
+            count += 1;
+        }
+        (nano, s)
+    } else {
+        (0u32, s)
+    };
+    Some((
+        Time {
+            hour,
+            minute,
+            second,
+            nanosecond,
+        },
+        s,
+    ))
+}
+
+fn parse_offset(s: &[u8]) -> Option<(i16, &[u8])> {
+    let Some((symb, s)) = s.split_first() else {
+        return None;
+    };
+    if *symb == b'Z' {
+        return Some((0, s));
+    }
+    let neg = if *symb == b'+' {
+        false
+    } else if *symb == b'-' {
+        true
+    } else {
+        return None;
+    };
+    let (hour, s) = parse_2_digit_num(s)?;
+    let (_, s) = parse_symb(s, b':')?;
+    let (minute, s) = parse_2_digit_num(s)?;
+    let offset = ((hour as i16) * 60) + (minute as i16);
+    let offset = if neg { -offset } else { offset };
+    Some((offset, s))
+}
+
+fn parse_datetime(s: &[u8]) -> Option<(DateTime, &[u8])> {
+    let (date, s) = parse_date(s)?;
+    let (_, s) = parse_symb(s, b'T')?;
+    let (time, s) = parse_time(s)?;
+    let (offset, s) = if let Some((offset, s)) = parse_offset(s) {
+        (Some(offset), s)
+    } else {
+        (None, s)
+    };
+    Some((DateTime { date, time, offset }, s))
+}
+
+impl core::str::FromStr for Date {
+    type Err = DateParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((date, rem)) = parse_date(s.as_bytes()) {
+            if rem.is_empty() {
+                Ok(date)
+            } else {
+                Err(DateParseError)
+            }
+        } else {
+            Err(DateParseError)
+        }
+    }
+}
+
 impl Date {
     #[cfg(feature = "chrono")]
     pub const fn as_naive_date(&self) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(self.year as i32, self.month as u32, self.day as u32)
             .expect("Invalid date")
-    }
-
-    #[cfg(feature = "chrono")]
-    pub const fn as_naive_datetime(&self) -> chrono::NaiveDateTime {
-        chrono::NaiveDateTime::new(
-            self.as_naive_date(),
-            chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-        )
     }
 
     pub const fn copy(&self) -> Self {
@@ -1155,50 +1286,6 @@ impl<'a> From<&'a Date> for chrono::NaiveDate {
     }
 }
 
-#[cfg(feature = "chrono")]
-impl From<Date> for chrono::NaiveDateTime {
-    fn from(date: Date) -> Self {
-        date.as_naive_datetime()
-    }
-}
-
-#[cfg(feature = "chrono")]
-impl<'a> From<&'a Date> for chrono::NaiveDateTime {
-    fn from(date: &'a Date) -> Self {
-        date.as_naive_datetime()
-    }
-}
-
-#[cfg(feature = "chrono")]
-impl<Tz> From<Date> for chrono::DateTime<Tz>
-where
-    Tz: chrono::TimeZone<Offset = chrono::FixedOffset>,
-{
-    fn from(date: Date) -> Self {
-        let dt = date.as_naive_datetime();
-        let offset = Tz::offset_from_utc_datetime(
-            &Tz::from_offset(&chrono::FixedOffset::east_opt(0).unwrap()),
-            &dt,
-        );
-        chrono::DateTime::from_naive_utc_and_offset(dt - offset, offset)
-    }
-}
-
-#[cfg(feature = "chrono")]
-impl<'a, Tz> From<&'a Date> for chrono::DateTime<Tz>
-where
-    Tz: chrono::TimeZone<Offset = chrono::FixedOffset>,
-{
-    fn from(date: &'a Date) -> Self {
-        let dt = date.as_naive_datetime();
-        let offset = Tz::offset_from_utc_datetime(
-            &Tz::from_offset(&chrono::FixedOffset::east_opt(0).unwrap()),
-            &dt,
-        );
-        chrono::DateTime::from_naive_utc_and_offset(dt - offset, offset)
-    }
-}
-
 impl Display for Time {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:02}:{:02}:{:02}", self.hour, self.minute, self.second)?;
@@ -1215,29 +1302,35 @@ impl Display for Time {
     }
 }
 
-impl Time {
-    pub const fn as_duration(&self) -> core::time::Duration {
-        core::time::Duration::new(
-            (self.hour as u64 * 3600) + (self.minute as u64 * 60) + (self.second as u64),
-            self.nanosecond as u32,
-        )
+impl Display for TimeParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("invalid time string, expected time in HH:MM:SS[.fff] format")
     }
+}
 
+impl core::str::FromStr for Time {
+    type Err = TimeParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((time, rem)) = parse_time(s.as_bytes()) {
+            if rem.is_empty() {
+                Ok(time)
+            } else {
+                Err(TimeParseError)
+            }
+        } else {
+            Err(TimeParseError)
+        }
+    }
+}
+
+impl Time {
     #[cfg(feature = "chrono")]
     pub const fn as_naive_time(&self) -> chrono::NaiveTime {
         chrono::NaiveTime::from_hms_nano_opt(
             self.hour as u32,
             self.minute as u32,
             self.second as u32,
-            self.nanosecond as u32,
-        )
-        .expect("Invalid time")
-    }
-
-    #[cfg(feature = "chrono")]
-    pub const fn as_time_delta(&self) -> chrono::TimeDelta {
-        chrono::TimeDelta::new(
-            (self.hour as i64 * 3600) + (self.minute as i64 * 60) + (self.second as i64),
             self.nanosecond as u32,
         )
         .expect("Invalid time")
@@ -1250,18 +1343,6 @@ impl Time {
             second: self.second,
             nanosecond: self.nanosecond,
         }
-    }
-}
-
-impl From<Time> for core::time::Duration {
-    fn from(time: Time) -> Self {
-        time.as_duration()
-    }
-}
-
-impl<'a> From<&'a Time> for core::time::Duration {
-    fn from(time: &'a Time) -> Self {
-        time.as_duration()
     }
 }
 
@@ -1279,62 +1360,42 @@ impl<'a> From<&'a Time> for chrono::NaiveTime {
     }
 }
 
-#[cfg(feature = "chrono")]
-impl From<Time> for chrono::TimeDelta {
-    fn from(time: Time) -> Self {
-        time.as_time_delta()
-    }
-}
-
-#[cfg(feature = "chrono")]
-impl<'a> From<&'a Time> for chrono::TimeDelta {
-    fn from(time: &'a Time) -> Self {
-        time.as_time_delta()
-    }
-}
-
-impl Display for OffsetTime {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Display::fmt(&self.time, f)?;
-        if let Some(offset) = self.offset_minutes {
-            if offset == 0 {
-                f.write_str("Z")?;
-            } else if offset < 0 {
-                let tmp = -(offset as i32);
-                let hrs = tmp / 60;
-                let min = tmp % 60;
-                write!(f, "-{:02}:{:02}", hrs, min)?;
-            } else {
-                let hrs = offset / 60;
-                let min = offset % 60;
-                write!(f, "-{:02}:{:02}", hrs, min)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl OffsetTime {
-    pub const fn copy(&self) -> Self {
-        Self {
-            time: self.time.copy(),
-            offset_minutes: if let Some(offset) = &self.offset_minutes {
-                Some(*offset)
-            } else {
-                None
-            },
-        }
-    }
-}
-
 impl Display for DateTime {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Display::fmt(&self.date, f)?;
-        if let Some(time) = self.time.as_ref() {
-            f.write_str("T")?;
-            Display::fmt(time, f)?;
+        write!(f, "{}T{}", self.date, self.time)?;
+        match self.offset {
+            Some(0) => f.write_str("Z"),
+            Some(offset) => {
+                let offset = if offset < 0 {
+                    f.write_str("-")?;
+                    (-(offset as i32)) as u32
+                } else {
+                    f.write_str("+")?;
+                    offset as u32
+                };
+
+                let hours = offset / 60;
+                let minutes = offset % 60;
+                write!(f, "{:02}:{:02}", hours, minutes)
+            }
+            None => Ok(()),
         }
-        Ok(())
+    }
+}
+
+impl core::str::FromStr for DateTime {
+    type Err = DateTimeParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((dt, rem)) = parse_datetime(s.as_bytes()) {
+            if rem.is_empty() {
+                Ok(dt)
+            } else {
+                Err(DateTimeParseError)
+            }
+        } else {
+            Err(DateTimeParseError)
+        }
     }
 }
 
@@ -1343,28 +1404,22 @@ impl DateTime {
     pub const fn as_naive_datetime_and_offset(
         &self,
     ) -> (chrono::NaiveDateTime, Option<chrono::FixedOffset>) {
-        if let Some(time) = self.time.as_ref() {
-            (
-                self.date
-                    .as_naive_datetime()
-                    .checked_add_signed(time.time.as_time_delta())
-                    .unwrap(),
-                if let Some(offset) = time.offset_minutes {
-                    Some(chrono::FixedOffset::east_opt(offset as i32 * 60).unwrap())
-                } else {
-                    None
-                },
-            )
-        } else {
-            (self.date.as_naive_datetime(), None)
-        }
+        (
+            chrono::NaiveDateTime::new(self.date.as_naive_date(), self.time.as_naive_time()),
+            if let Some(offset) = &self.offset {
+                Some(chrono::FixedOffset::east_opt(*offset as i32 * 60).unwrap())
+            } else {
+                None
+            },
+        )
     }
 
     pub const fn copy(&self) -> Self {
         Self {
             date: self.date.copy(),
-            time: if let Some(time) = &self.time {
-                Some(time.copy())
+            time: self.time.copy(),
+            offset: if let Some(offset) = &self.offset {
+                Some(*offset)
             } else {
                 None
             },
@@ -1443,16 +1498,6 @@ impl serde::Serialize for Time {
 }
 
 #[cfg(feature = "serde")]
-impl serde::Serialize for OffsetTime {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.collect_str(self)
-    }
-}
-
-#[cfg(feature = "serde")]
 impl serde::Serialize for DateTime {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1494,6 +1539,7 @@ impl<'a> serde::Serialize for Value<'a> {
             Self::Null => serializer.serialize_none(),
             Self::Bool(value) => serializer.serialize_bool(*value),
             Self::Number(value) => serde::Serialize::serialize(value, serializer),
+            Self::Date(value) => serde::Serialize::serialize(value, serializer),
             Self::Time(value) => serde::Serialize::serialize(value, serializer),
             Self::DateTime(value) => serde::Serialize::serialize(value, serializer),
             Self::Str(value) => serializer.serialize_str(value),
@@ -1542,6 +1588,10 @@ impl<'a> Value<'a> {
 
     pub const fn is_float(&self) -> bool {
         matches!(self, Self::Number(Number::Float(_)))
+    }
+
+    pub const fn is_date(&self) -> bool {
+        matches!(self, Self::Date(_))
     }
 
     pub const fn is_time(&self) -> bool {
@@ -1725,17 +1775,26 @@ impl<'a> Value<'a> {
         }
     }
 
-    pub const fn try_as_time(&self) -> Option<Time> {
-        if let Value::Time(time) = self {
-            Some(time.copy())
+    pub const fn try_as_date(&self) -> Option<Date> {
+        if let Value::Date(date) = self {
+            Some(date.copy())
         } else {
             None
         }
     }
 
-    pub const fn try_as_duration(&self) -> Option<core::time::Duration> {
+    #[cfg(feature = "chrono")]
+    pub const fn try_as_naive_date(&self) -> Option<chrono::NaiveDate> {
+        if let Value::Date(date) = self {
+            Some(date.as_naive_date())
+        } else {
+            None
+        }
+    }
+
+    pub const fn try_as_time(&self) -> Option<Time> {
         if let Value::Time(time) = self {
-            Some(time.as_duration())
+            Some(time.copy())
         } else {
             None
         }
@@ -1745,15 +1804,6 @@ impl<'a> Value<'a> {
     pub const fn try_as_naive_time(&self) -> Option<chrono::NaiveTime> {
         if let Value::Time(time) = self {
             Some(time.as_naive_time())
-        } else {
-            None
-        }
-    }
-
-    #[cfg(feature = "chrono")]
-    pub const fn try_as_time_delta(&self) -> Option<chrono::TimeDelta> {
-        if let Value::Time(time) = self {
-            Some(time.as_time_delta())
         } else {
             None
         }
@@ -1779,7 +1829,7 @@ impl<'a> Value<'a> {
     }
 
     #[cfg(feature = "chrono")]
-    pub fn try_as_chrono_datetime<Tz>(&self) -> Option<chrono::DateTime<Tz>>
+    pub fn try_as_datetime_tz<Tz>(&self) -> Option<chrono::DateTime<Tz>>
     where
         Tz: chrono::TimeZone<Offset = chrono::FixedOffset>,
     {
@@ -1902,22 +1952,22 @@ impl<'a> Value<'a> {
         self.try_as_char().unwrap()
     }
 
-    pub const fn as_time(&self) -> Time {
-        self.try_as_time().unwrap()
+    pub const fn as_date(&self) -> Date {
+        self.try_as_date().unwrap()
     }
 
-    pub const fn as_duration(&self) -> core::time::Duration {
-        self.try_as_duration().unwrap()
+    #[cfg(feature = "chrono")]
+    pub const fn as_naive_date(&self) -> chrono::NaiveDate {
+        self.try_as_naive_date().unwrap()
+    }
+
+    pub const fn as_time(&self) -> Time {
+        self.try_as_time().unwrap()
     }
 
     #[cfg(feature = "chrono")]
     pub const fn as_naive_time(&self) -> chrono::NaiveTime {
         self.try_as_naive_time().unwrap()
-    }
-
-    #[cfg(feature = "chrono")]
-    pub const fn as_time_delta(&self) -> chrono::TimeDelta {
-        self.try_as_time_delta().unwrap()
     }
 
     pub const fn as_datetime(&self) -> DateTime {
@@ -1932,11 +1982,11 @@ impl<'a> Value<'a> {
     }
 
     #[cfg(feature = "chrono")]
-    pub fn as_chrono_datetime<Tz>(&self) -> chrono::DateTime<Tz>
+    pub fn as_datetime_tz<Tz>(&self) -> chrono::DateTime<Tz>
     where
         Tz: chrono::TimeZone<Offset = chrono::FixedOffset>,
     {
-        self.try_as_chrono_datetime().unwrap()
+        self.try_as_datetime_tz().unwrap()
     }
 
     pub const fn as_str(&self) -> &'a str {
@@ -1964,6 +2014,7 @@ impl<'a> Value<'a> {
             Self::Null => Self::Null,
             Self::Bool(value) => Self::Bool(*value),
             Self::Number(value) => Self::Number(value.copy()),
+            Self::Date(date) => Self::Date(date.copy()),
             Self::Time(value) => Self::Time(value.copy()),
             Self::DateTime(value) => Self::DateTime(value.copy()),
             Self::Str(value) => Self::Str(*value),
@@ -1975,15 +2026,11 @@ impl<'a> Value<'a> {
     }
 
     #[cfg(feature = "serde")]
-    pub fn try_interpret_as<D>(&self) -> Option<D>
+    pub fn try_interpret_as<D>(&self) -> Result<D, InterpretError>
     where
         D: serde::Deserialize<'a>,
     {
-        if let Ok(value) = D::deserialize(Deser(self.clone())) {
-            Some(value)
-        } else {
-            None
-        }
+        D::deserialize(Deser(self.clone()))
     }
 
     #[cfg(feature = "serde")]
@@ -1996,8 +2043,8 @@ impl<'a> Value<'a> {
 }
 
 #[cfg(feature = "serde")]
-#[derive(Debug, Clone, Copy)]
-struct ConversionError;
+#[derive(Debug, Clone)]
+pub struct InterpretError(alloc::string::String);
 
 #[cfg(feature = "serde")]
 struct Deser<'a>(Value<'a>);
@@ -2021,28 +2068,29 @@ struct DeserVariant<'a>(Option<&'a Value<'a>>);
 struct DeserKey<'a>(&'a str);
 
 #[cfg(feature = "serde")]
-impl Display for ConversionError {
+impl Display for InterpretError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("const-config conversion error")
+        write!(f, "const-config interpret error: {}", self.0)
     }
 }
 
 #[cfg(feature = "serde")]
-impl core::error::Error for ConversionError {}
+impl core::error::Error for InterpretError {}
 
 #[cfg(feature = "serde")]
-impl serde::de::Error for ConversionError {
-    fn custom<T>(_msg: T) -> Self
+impl serde::de::Error for InterpretError {
+    fn custom<T>(msg: T) -> Self
     where
         T: Display,
     {
-        ConversionError
+        use alloc::string::ToString;
+        InterpretError(msg.to_string())
     }
 }
 
 #[cfg(feature = "serde")]
 impl<'a> serde::de::SeqAccess<'a> for DeserArray<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
     where
@@ -2063,7 +2111,7 @@ impl<'a> serde::de::SeqAccess<'a> for DeserArray<'a> {
 
 #[cfg(feature = "serde")]
 impl<'a> serde::de::MapAccess<'a> for DeserObject<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
     where
@@ -2084,7 +2132,10 @@ impl<'a> serde::de::MapAccess<'a> for DeserObject<'a> {
             *self = DeserObject(tail);
             Ok(seed.deserialize(Deser(head.1.clone()))?)
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "attempt to deserialize object field with no remaining fields to deserialize: {:?}",
+                self.0
+            )))
         }
     }
 
@@ -2095,7 +2146,7 @@ impl<'a> serde::de::MapAccess<'a> for DeserObject<'a> {
 
 #[cfg(feature = "serde")]
 impl<'a> serde::de::MapAccess<'a> for DeserMap<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
     where
@@ -2116,7 +2167,10 @@ impl<'a> serde::de::MapAccess<'a> for DeserMap<'a> {
             *self = DeserMap(tail);
             Ok(seed.deserialize(Deser(head.1.clone()))?)
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "attempt to deserialize map entry value with no remaining entries to deserialize: {:?}",
+                self.0
+            )))
         }
     }
 
@@ -2127,7 +2181,7 @@ impl<'a> serde::de::MapAccess<'a> for DeserMap<'a> {
 
 #[cfg(feature = "serde")]
 impl<'a> serde::de::EnumAccess<'a> for DeserEnum<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
     type Variant = DeserVariant<'a>;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
@@ -2151,20 +2205,26 @@ impl<'a> serde::de::EnumAccess<'a> for DeserEnum<'a> {
                     DeserVariant(Some(&entry.1)),
                 ))
             }
-            _ => Err(ConversionError),
+            _ => Err(InterpretError(format!(
+                "attempt to deserialize enum from data that is incompatible with enum layout: {:?}",
+                self.0
+            ))),
         }
     }
 }
 
 #[cfg(feature = "serde")]
 impl<'a> serde::de::VariantAccess<'a> for DeserVariant<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
 
     fn unit_variant(self) -> Result<(), Self::Error> {
         if self.0.is_none() {
             Ok(())
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "expected no data for unit variant, but have data: {:?}",
+                self.0
+            )))
         }
     }
 
@@ -2175,7 +2235,9 @@ impl<'a> serde::de::VariantAccess<'a> for DeserVariant<'a> {
         if let Some(value) = self.0 {
             seed.deserialize(Deser(value.clone()))
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "expected data for newtype variant, but have none"
+            )))
         }
     }
 
@@ -2188,7 +2250,9 @@ impl<'a> serde::de::VariantAccess<'a> for DeserVariant<'a> {
         if let Some(value) = self.0 {
             Deser(value.clone()).deserialize_tuple(len, visitor)
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "expected data for tuple variant, but have none"
+            )))
         }
     }
 
@@ -2205,14 +2269,16 @@ impl<'a> serde::de::VariantAccess<'a> for DeserVariant<'a> {
         if let Some(value) = self.0 {
             Deser(value.clone()).deserialize_map(visitor)
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "expected data for struct variant, but have none"
+            )))
         }
     }
 }
 
 #[cfg(feature = "serde")]
 impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
@@ -2225,91 +2291,130 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as bool, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_i8<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as i8, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as i16, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_i32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as i32, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_i64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as i64, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_i128<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as i128, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as u8, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as u8, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as u32, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as u64, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_u128<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as u128, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as f32, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as f64, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -2321,10 +2426,15 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
             if it.next().is_none() {
                 visitor.visit_char(ch)
             } else {
-                Err(ConversionError)
+                Err(InterpretError(format!(
+                    "attempt to deserialize multi-character string as single character: {:?}",
+                    self.0
+                )))
             }
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "attempt to deserialize empty string as single character"
+            )))
         }
     }
 
@@ -2356,18 +2466,21 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
         visitor.visit_byte_buf(self.0.as_bytes().into())
     }
 
-    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        visitor.visit_some(self)
     }
 
     fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as unit, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_unit_struct<V>(
@@ -2378,7 +2491,10 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as unit struct, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_newtype_struct<V>(
@@ -2389,21 +2505,30 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as newtype struct, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as sequence, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_tuple<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as tuple, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_tuple_struct<V>(
@@ -2415,14 +2540,20 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as tuple struct, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as map, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_struct<V>(
@@ -2434,7 +2565,10 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as struct, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_enum<V>(
@@ -2446,7 +2580,10 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        Err(ConversionError)
+        Err(InterpretError(format!(
+            "attempt to deserialize object key as enum, have key {:?}",
+            self.0
+        )))
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -2470,7 +2607,7 @@ impl<'a> serde::Deserializer<'a> for DeserKey<'a> {
 
 #[cfg(feature = "serde")]
 impl<'a> serde::Deserializer<'a> for Deser<'a> {
-    type Error = ConversionError;
+    type Error = InterpretError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
@@ -2482,6 +2619,7 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
             Value::Number(Number::UInt(value)) => visitor.visit_u64(value),
             Value::Number(Number::Int(value)) => visitor.visit_i64(value),
             Value::Number(Number::Float(value)) => visitor.visit_f64(value),
+            Value::Date(value) => visitor.visit_string(value.to_string()),
             Value::Time(value) => visitor.visit_string(value.to_string()),
             Value::DateTime(value) => visitor.visit_string(value.to_string()),
             Value::Str(value) => visitor.visit_str(value),
@@ -2499,7 +2637,10 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         if let Value::Bool(value) = self.0 {
             visitor.visit_bool(value)
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "requested deserialization of bool, have {:?}",
+                self.0
+            )))
         }
     }
 
@@ -2507,91 +2648,156 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_i8(self.0.try_as_i8().ok_or(ConversionError)?)
+        visitor.visit_i8(self.0.try_as_i8().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of i8, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_i16(self.0.try_as_i16().ok_or(ConversionError)?)
+        visitor.visit_i16(self.0.try_as_i16().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of i16, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_i32(self.0.try_as_i32().ok_or(ConversionError)?)
+        visitor.visit_i32(self.0.try_as_i32().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of i32, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_i64(self.0.try_as_i64().ok_or(ConversionError)?)
+        visitor.visit_i64(self.0.try_as_i64().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of i64, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_i128(self.0.try_as_i128().ok_or(ConversionError)?)
+        visitor.visit_i128(self.0.try_as_i128().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of i128, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_u8(self.0.try_as_u8().ok_or(ConversionError)?)
+        visitor.visit_u8(self.0.try_as_u8().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of u8, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_u16(self.0.try_as_u16().ok_or(ConversionError)?)
+        visitor.visit_u16(self.0.try_as_u16().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of u16, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_u32(self.0.try_as_u32().ok_or(ConversionError)?)
+        visitor.visit_u32(self.0.try_as_u32().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of u32, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_u64(self.0.try_as_u64().ok_or(ConversionError)?)
+        visitor.visit_u64(self.0.try_as_u64().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of u64, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_u128(self.0.try_as_u128().ok_or(ConversionError)?)
+        visitor.visit_u128(self.0.try_as_u128().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of u128, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_f32(self.0.try_as_f32().ok_or(ConversionError)?)
+        visitor.visit_f32(self.0.try_as_f32().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of f32, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_f64(self.0.try_as_f64().ok_or(ConversionError)?)
+        visitor.visit_f64(self.0.try_as_f64().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of f64, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'a>,
     {
-        visitor.visit_char(self.0.try_as_char().ok_or(ConversionError)?)
+        visitor.visit_char(self.0.try_as_char().ok_or_else(|| {
+            InterpretError(format!(
+                "requested deserialization of char, have {:?}",
+                self.0
+            ))
+        })?)
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -2600,9 +2806,13 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
     {
         match self.0 {
             Value::Str(value) => visitor.visit_borrowed_str(value),
-            Value::Time(value) => visitor.visit_str(&value.to_string()),
-            Value::DateTime(value) => visitor.visit_str(&value.to_string()),
-            _ => Err(ConversionError),
+            Value::Date(value) => visitor.visit_string(value.to_string()),
+            Value::Time(value) => visitor.visit_string(value.to_string()),
+            Value::DateTime(value) => visitor.visit_string(value.to_string()),
+            _ => Err(InterpretError(format!(
+                "requested deserialization of str, have {:?}",
+                self.0
+            ))),
         }
     }
 
@@ -2612,9 +2822,13 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
     {
         match self.0 {
             Value::Str(value) => visitor.visit_string((*value).into()),
+            Value::Date(value) => visitor.visit_string(value.to_string()),
             Value::Time(value) => visitor.visit_string(value.to_string()),
             Value::DateTime(value) => visitor.visit_string(value.to_string()),
-            _ => Err(ConversionError),
+            _ => Err(InterpretError(format!(
+                "requested deserialization of String, have {:?}",
+                self.0
+            ))),
         }
     }
 
@@ -2625,7 +2839,10 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         match self.0 {
             Value::Str(value) => visitor.visit_borrowed_bytes(value.as_bytes()),
             Value::Array(value) => visitor.visit_seq(DeserArray(value)),
-            _ => Err(ConversionError),
+            _ => Err(InterpretError(format!(
+                "requested deserialization of bytes, have {:?}",
+                self.0
+            ))),
         }
     }
 
@@ -2641,12 +2858,18 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
                     if let Some(v) = val.try_as_u8() {
                         bytes.push(v);
                     } else {
-                        return Err(ConversionError);
+                        return Err(InterpretError(format!(
+                            "requested deserialization of byte buffer, have {:?}",
+                            self.0
+                        )));
                     }
                 }
                 visitor.visit_byte_buf(bytes)
             }
-            _ => Err(ConversionError),
+            _ => Err(InterpretError(format!(
+                "requested deserialization of byte buffer, have {:?}",
+                self.0
+            ))),
         }
     }
 
@@ -2667,7 +2890,10 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         match self.0 {
             Value::Array(value) if value.is_empty() => visitor.visit_unit(),
             Value::Object(value) if value.is_empty() => visitor.visit_unit(),
-            _ => Err(ConversionError),
+            _ => Err(InterpretError(format!(
+                "requested deserialization of unit, have {:?}",
+                self.0
+            ))),
         }
     }
 
@@ -2700,7 +2926,10 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         if let Value::Array(value) = self.0 {
             visitor.visit_seq(DeserArray(value))
         } else {
-            Err(ConversionError)
+            Err(InterpretError(format!(
+                "requested deserialization as sequence, have {:?}",
+                self.0
+            )))
         }
     }
 
@@ -2730,7 +2959,10 @@ impl<'a> serde::Deserializer<'a> for Deser<'a> {
         match self.0 {
             Value::Object(value) => visitor.visit_map(DeserObject(value.entries)),
             Value::Map(value) => visitor.visit_map(DeserMap(value.entries)),
-            _ => Err(ConversionError),
+            _ => Err(InterpretError(format!(
+                "requested deserialization as map, have {:?}",
+                self.0
+            ))),
         }
     }
 
@@ -2924,36 +3156,44 @@ impl<'a> serde::Deserialize<'a> for Date {
             where
                 E: serde::de::Error,
             {
-                let mut iter = v.split('-');
-                let Some(year) = iter.next() else {
-                    return Err(E::custom("invalid date string"));
+                let Ok(date) = v.parse() else {
+                    struct Msg<'a>(&'a str);
+
+                    impl<'a> Display for Msg<'a> {
+                        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                            write!(f, "invalid date string, got {:?}", self.0)
+                        }
+                    }
+
+                    return Err(E::custom(Msg(v)));
                 };
-                let Ok(year) = year.parse() else {
-                    return Err(E::custom("invalid date string"));
-                };
-                let Some(month) = iter.next() else {
-                    return Err(E::custom("invalid date string"));
-                };
-                let Ok(month) = month.parse() else {
-                    return Err(E::custom("invalid date string"));
-                };
-                let Some(day) = iter.next() else {
-                    return Err(E::custom("invalid date string"));
-                };
-                let Ok(day) = day.parse() else {
-                    return Err(E::custom("invalid date string"));
-                };
-                Ok(Date { year, month, day })
+                Ok(date)
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Date, E>
             where
                 E: serde::de::Error,
             {
-                if let Ok(v) = core::str::from_utf8(v) {
-                    self.visit_str(v)
+                struct Msg<'a>(&'a [u8]);
+
+                impl<'a> Display for Msg<'a> {
+                    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        if let Ok(s) = core::str::from_utf8(self.0) {
+                            write!(f, "invalid date string, got {:?}", s)
+                        } else {
+                            write!(f, "invalid date string, got {:?}", self.0)
+                        }
+                    }
+                }
+
+                if let Some((date, rem)) = parse_date(v) {
+                    if rem.is_empty() {
+                        Ok(date)
+                    } else {
+                        Err(E::custom(Msg(v)))
+                    }
                 } else {
-                    Err(E::custom("invalid date string"))
+                    Err(E::custom(Msg(v)))
                 }
             }
 
@@ -3084,66 +3324,44 @@ impl<'a> serde::Deserialize<'a> for Time {
             where
                 E: serde::de::Error,
             {
-                let mut iter = v.split(':');
-                let Some(hour) = iter.next() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let Ok(hour) = hour.parse() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let Some(minute) = iter.next() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let Ok(minute) = minute.parse() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let Some(sec) = iter.next() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let mut iter = sec.split('.');
-                let Some(second) = iter.next() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let Ok(second) = second.parse() else {
-                    return Err(E::custom("invalid time string"));
-                };
-                let nanosecond = if let Some(nano) = iter.next() {
-                    let mut val = 0u32;
-                    let mut digits = 0usize;
-                    for ch in nano.chars() {
-                        if ch < '0' || ch > '9' {
-                            return Err(E::custom("invalid time string"));
+                let Ok(time) = v.parse() else {
+                    struct Msg<'a>(&'a str);
+
+                    impl<'a> Display for Msg<'a> {
+                        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                            write!(f, "invalid time string, got {:?}", self.0)
                         }
-                        if digits == 9 {
-                            continue;
-                        }
-                        digits += 1;
-                        val = (val * 10) + ((ch as u32) - ('0' as u32));
                     }
-                    while digits < 9 {
-                        digits += 1;
-                        val *= 10;
-                    }
-                    val
-                } else {
-                    0u32
+
+                    return Err(E::custom(Msg(v)));
                 };
-                Ok(Time {
-                    hour,
-                    minute,
-                    second,
-                    nanosecond,
-                })
+                Ok(time)
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Time, E>
             where
                 E: serde::de::Error,
             {
-                if let Ok(v) = core::str::from_utf8(v) {
-                    self.visit_str(v)
+                struct Msg<'a>(&'a [u8]);
+
+                impl<'a> Display for Msg<'a> {
+                    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        if let Ok(s) = core::str::from_utf8(self.0) {
+                            write!(f, "invalid time string, got {:?}", s)
+                        } else {
+                            write!(f, "invalid time string, got {:?}", self.0)
+                        }
+                    }
+                }
+
+                if let Some((time, rem)) = parse_time(v) {
+                    if rem.is_empty() {
+                        Ok(time)
+                    } else {
+                        Err(E::custom(Msg(v)))
+                    }
                 } else {
-                    Err(E::custom("invalid time string"))
+                    Err(E::custom(Msg(v)))
                 }
             }
 
@@ -3281,5 +3499,168 @@ impl<'a> serde::Deserialize<'a> for Time {
         }
 
         deserializer.deserialize_any(TimeVisitor)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Deserialize<'a> for DateTime {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'a>,
+    {
+        struct DateTimeVisitor;
+
+        impl<'a> serde::de::Visitor<'a> for DateTimeVisitor {
+            type Value = DateTime;
+
+            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.write_str("a date and time")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<DateTime, E>
+            where
+                E: serde::de::Error,
+            {
+                let Ok(dt) = v.parse() else {
+                    struct Msg<'a>(&'a str);
+
+                    impl<'a> Display for Msg<'a> {
+                        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                            write!(f, "invalid date-time string, got {:?}", self.0)
+                        }
+                    }
+
+                    return Err(E::custom(Msg(v)));
+                };
+                Ok(dt)
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<DateTime, E>
+            where
+                E: serde::de::Error,
+            {
+                struct Msg<'a>(&'a [u8]);
+
+                impl<'a> Display for Msg<'a> {
+                    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        if let Ok(s) = core::str::from_utf8(self.0) {
+                            write!(f, "invalid date-time string, got {:?}", s)
+                        } else {
+                            write!(f, "invalid date-time string, got {:?}", self.0)
+                        }
+                    }
+                }
+
+                if let Some((dt, rem)) = parse_datetime(v) {
+                    if rem.is_empty() {
+                        Ok(dt)
+                    } else {
+                        Err(E::custom(Msg(v)))
+                    }
+                } else {
+                    Err(E::custom(Msg(v)))
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<DateTime, A::Error>
+            where
+                A: serde::de::MapAccess<'a>,
+            {
+                enum Field {
+                    Date,
+                    Time,
+                    Offset,
+                }
+
+                impl<'a> serde::Deserialize<'a> for Field {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where
+                        D: serde::Deserializer<'a>,
+                    {
+                        struct FieldVisitor;
+
+                        impl<'a> serde::de::Visitor<'a> for FieldVisitor {
+                            type Value = Field;
+
+                            fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                                f.write_str("'date', 'time', or 'offset'")
+                            }
+
+                            fn visit_str<E>(self, v: &str) -> Result<Field, E>
+                            where
+                                E: serde::de::Error,
+                            {
+                                match v {
+                                    "date" => Ok(Field::Date),
+                                    "time" => Ok(Field::Time),
+                                    "offset" => Ok(Field::Offset),
+                                    _ => Err(E::unknown_field(v, &["date", "time", "offset"])),
+                                }
+                            }
+                        }
+
+                        deserializer.deserialize_identifier(FieldVisitor)
+                    }
+                }
+
+                let mut date: Option<Date> = None;
+                let mut time: Option<Time> = None;
+                let mut offset: Option<Option<i16>> = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::Date => {
+                            if date.is_none() {
+                                date = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("date"));
+                            }
+                        }
+                        Field::Time => {
+                            if time.is_none() {
+                                time = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("time"));
+                            }
+                        }
+                        Field::Offset => {
+                            if offset.is_none() {
+                                offset = Some(map.next_value()?);
+                            } else {
+                                return Err(serde::de::Error::duplicate_field("offset"));
+                            }
+                        }
+                    }
+                }
+
+                let Some(date) = date else {
+                    return Err(serde::de::Error::missing_field("date"));
+                };
+                let Some(time) = time else {
+                    return Err(serde::de::Error::missing_field("time"));
+                };
+                let offset = offset.flatten();
+
+                Ok(DateTime { date, time, offset })
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<DateTime, A::Error>
+            where
+                A: serde::de::SeqAccess<'a>,
+            {
+                let Some(date) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(0, &self));
+                };
+                let Some(time) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(1, &self));
+                };
+                let Some(offset) = seq.next_element()? else {
+                    return Err(serde::de::Error::invalid_length(2, &self));
+                };
+                Ok(DateTime { date, time, offset })
+            }
+        }
+
+        deserializer.deserialize_any(DateTimeVisitor)
     }
 }
