@@ -1139,6 +1139,98 @@ impl Number {
     }
 }
 
+impl PartialEq for Number {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::UInt(lhs), Self::UInt(rhs)) => *lhs == *rhs,
+            (Self::Int(lhs), Self::Int(rhs)) => *lhs == *rhs,
+            (Self::Float(lhs), Self::Float(rhs)) => *lhs == *rhs,
+            (Self::UInt(lhs), Self::Int(rhs)) => *rhs >= 0 && *lhs == (*rhs as u128),
+            (Self::Int(lhs), Self::UInt(rhs)) => *lhs >= 0 && (*lhs as u128) == *rhs,
+            (Self::UInt(lhs), Self::Float(rhs)) => {
+                *rhs >= 0.0f64 && (*rhs as u128 as f64) == *rhs && *lhs == (*rhs as u128)
+            }
+            (Self::Float(lhs), Self::UInt(rhs)) => {
+                *lhs >= 0.0f64 && (*lhs as u128 as f64) == *lhs && (*lhs as u128) == *rhs
+            }
+            (Self::Int(lhs), Self::Float(rhs)) => {
+                (*rhs as i128 as f64) == *rhs && *lhs == (*rhs as i128)
+            }
+            (Self::Float(lhs), Self::Int(rhs)) => {
+                (*lhs as i128 as f64) == *lhs && (*lhs as i128) == *rhs
+            }
+        }
+    }
+}
+
+impl PartialOrd for Number {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        match (self, other) {
+            (Self::UInt(lhs), Self::UInt(rhs)) => PartialOrd::partial_cmp(lhs, rhs),
+            (Self::Int(lhs), Self::Int(rhs)) => PartialOrd::partial_cmp(lhs, rhs),
+            (Self::Float(lhs), Self::Float(rhs)) => PartialOrd::partial_cmp(lhs, rhs),
+            (Self::UInt(lhs), Self::Int(rhs)) => {
+                if *rhs < 0 {
+                    Some(core::cmp::Ordering::Greater)
+                } else {
+                    PartialOrd::partial_cmp(lhs, &(*rhs as u128))
+                }
+            }
+            (Self::Int(lhs), Self::UInt(rhs)) => {
+                if *lhs < 0 {
+                    Some(core::cmp::Ordering::Less)
+                } else {
+                    PartialOrd::partial_cmp(&(*lhs as u128), rhs)
+                }
+            }
+            (Self::UInt(lhs), Self::Float(rhs)) => {
+                if *rhs < 0.0f64 {
+                    Some(core::cmp::Ordering::Greater)
+                } else if (*rhs as u128 as f64) == *rhs {
+                    PartialOrd::partial_cmp(lhs, &(*rhs as u128))
+                } else {
+                    match PartialOrd::partial_cmp(&(*lhs as f64), rhs) {
+                        Some(core::cmp::Ordering::Equal) => Some(core::cmp::Ordering::Greater),
+                        ord => ord,
+                    }
+                }
+            }
+            (Self::Float(lhs), Self::UInt(rhs)) => {
+                if *lhs < 0.0f64 {
+                    Some(core::cmp::Ordering::Less)
+                } else if (*lhs as u128 as f64) == *lhs {
+                    PartialOrd::partial_cmp(&(*lhs as u128), rhs)
+                } else {
+                    match PartialOrd::partial_cmp(lhs, &(*rhs as f64)) {
+                        Some(core::cmp::Ordering::Equal) => Some(core::cmp::Ordering::Less),
+                        ord => ord,
+                    }
+                }
+            }
+            (Self::Int(lhs), Self::Float(rhs)) => {
+                if (*rhs as i128 as f64) == *rhs {
+                    PartialOrd::partial_cmp(lhs, &(*rhs as i128))
+                } else {
+                    match PartialOrd::partial_cmp(&(*lhs as f64), rhs) {
+                        Some(core::cmp::Ordering::Equal) => Some(core::cmp::Ordering::Greater),
+                        ord => ord,
+                    }
+                }
+            }
+            (Self::Float(lhs), Self::Int(rhs)) => {
+                if (*lhs as i128 as f64) == *lhs {
+                    PartialOrd::partial_cmp(&(*lhs as i128), rhs)
+                } else {
+                    match PartialOrd::partial_cmp(lhs, &(*rhs as f64)) {
+                        Some(core::cmp::Ordering::Equal) => Some(core::cmp::Ordering::Less),
+                        ord => ord,
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl Display for Number {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
