@@ -232,7 +232,7 @@ pub use const_config_macros::from_flexbuffers;
 #[cfg(feature = "flexbuffers")]
 pub use const_config_macros::include_flexbuffers;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value<'a> {
     Null,
     Bool(bool),
@@ -421,6 +421,24 @@ impl<'a> Object<'a> {
             phf_params: self.phf_params,
             phf_values: self.phf_values,
         }
+    }
+}
+
+impl<'a> PartialEq for Object<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for (key, value) in self.entries {
+            if let Some(other_value) = other.try_get(key) {
+                if *value != *other_value {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -947,6 +965,24 @@ impl<'a> Map<'a> {
     }
 }
 
+impl<'a> PartialEq for Map<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for (key, value) in self.entries {
+            if let Some(other_value) = other.try_get(key) {
+                if *value != *other_value {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 impl Number {
     pub const fn is_uint(&self) -> bool {
         matches!(self, Self::UInt(_))
@@ -1253,6 +1289,8 @@ impl Display for DateParseError {
     }
 }
 
+/* poor man's nom parsers below :D */
+
 fn parse_symb(s: &[u8], symb: u8) -> Option<((), &[u8])> {
     let Some((b, rem)) = s.split_first() else {
         return None;
@@ -1485,6 +1523,26 @@ impl From<Time> for chrono::NaiveTime {
 impl<'a> From<&'a Time> for chrono::NaiveTime {
     fn from(time: &'a Time) -> Self {
         time.as_naive_time()
+    }
+}
+
+impl PartialOrd for DateTime {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        match Ord::cmp(&self.offset, &other.offset) {
+            core::cmp::Ordering::Equal => {}
+            _ => {
+                return None;
+            }
+        }
+
+        match Ord::cmp(&self.date, &other.date) {
+            core::cmp::Ordering::Equal => {}
+            ord => {
+                return Some(ord);
+            }
+        }
+
+        Some(Ord::cmp(&self.time, &other.time))
     }
 }
 
