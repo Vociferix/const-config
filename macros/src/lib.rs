@@ -52,19 +52,23 @@ macro_rules! parse_bytes {
 #[allow(unused)]
 macro_rules! parse_path_str {
     ($args:expr) => {{
+        let base_dir = ($args)
+            .clone()
+            .into_iter()
+            .next()
+            .and_then(|tt| tt.span().local_file())
+            .map(|mut p| {
+                p.pop();
+                p
+            });
         let path = parse_str!($args);
         let path = std::path::Path::new(&path);
         let path = if path.is_absolute() {
             path.to_path_buf()
+        } else if let Some(base_dir) = base_dir {
+            base_dir.join(path)
         } else {
-            let base_dir = match std::env::var("CARGO_MANIFEST_DIR") {
-                Ok(base_dir) => base_dir,
-                Err(err) => {
-                    let err = err.to_string();
-                    return quote! { ::core::compile_error!(#err) }.into();
-                }
-            };
-            std::path::Path::new(&base_dir).join(path)
+            path.to_path_buf()
         };
 
         use std::io::Read;
@@ -90,19 +94,23 @@ macro_rules! parse_path_str {
 #[allow(unused)]
 macro_rules! parse_path_bytes {
     ($args:expr) => {{
+        let base_dir = ($args)
+            .clone()
+            .into_iter()
+            .next()
+            .and_then(|tt| tt.span().local_file())
+            .map(|mut p| {
+                p.pop();
+                p
+            });
         let path = parse_str!($args);
         let path = std::path::Path::new(&path);
         let path = if path.is_absolute() {
             path.to_path_buf()
+        } else if let Some(base_dir) = base_dir {
+            base_dir.join(path)
         } else {
-            let base_dir = match std::env::var("CARGO_MANIFEST_DIR") {
-                Ok(base_dir) => base_dir,
-                Err(err) => {
-                    let err = err.to_string();
-                    return quote! { ::core::compile_error!(#err) }.into();
-                }
-            };
-            std::path::Path::new(&base_dir).join(path)
+            path.to_path_buf()
         };
 
         use std::io::Read;

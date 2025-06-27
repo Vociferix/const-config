@@ -1,7 +1,39 @@
 [package]
 name = "const-config"
+authors = ["Jack Bernard <jack.a.bernard.jr@gmail.com>"]
 version = "0.1.0"
 edition = "2024"
+categories = ["config", "no-std", "no-std::no-alloc"]
+description = "Compiled-in configuration and data"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/Vociferix/const-config"
+documentation = "https://docs.rs/const-config"
+keywords = [
+	"config",
+	"const",
+	"serde",
+]
+
+[package.metadata.docs.rs]
+features = [
+	"serde",
+	"chrono",
+	"toml",
+	"json",
+	"yaml",
+	"ron",
+	"json5",
+	"s-expr",
+	"hjson",
+	"csv",
+	"cbor",
+	"msgpack",
+	"pickle",
+	"bson",
+	"flexbuffers"
+]
+all-features = true
 
 [dependencies]
 serde = { version = "1.0", optional = true }
@@ -9,12 +41,27 @@ chrono = { version = "0.4", optional = true }
 const-config-macros = { path = "macros", optional = true }
 
 [dev-dependencies]
-serde = { version = "1.0", features = ["serde_derive"] }
+serde = { version = "1.0", features = ["derive"] }
 
 [features]
 default = []
 serde = ["dep:serde"]
 chrono = ["dep:chrono"]
+all-formats = [
+    "toml",
+    "json",
+    "yaml",
+    "ron",
+    "json5",
+    "s-expr",
+    "hjson",
+    "csv",
+    "cbor",
+    "msgpack",
+    "pickle",
+    "bson",
+    "flexbuffers",
+]
 toml = ["const-config-macros/toml"]
 json = ["const-config-macros/json"]
 yaml = ["const-config-macros/yaml"]

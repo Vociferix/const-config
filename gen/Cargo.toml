@@ -1,16 +1,44 @@
 [package]
 name = "const-config-gen"
+authors = ["Jack Bernard <jack.a.bernard.jr@gmail.com>"]
 version = "0.1.0"
 edition = "2024"
+categories = ["config", "no-std", "no-std::no-alloc"]
+description = "Code generation for `const-config` crate"
+license = "MIT OR Apache-2.0"
+readme = "../README.md" # TODO: separate README for const-config-gen?
+repository = "https://github.com/Vociferix/const-config"
+documentation = "https://docs.rs/const-config"
+keywords = [
+	"config",
+	"const",
+	"serde",
+]
 
-[[bin]]
-name = "const-config-gen"
-required-features = ["cli"]
+[package.metadata.docs.rs]
+features = [
+	"serde",
+	"chrono",
+	"toml",
+	"json",
+	"yaml",
+	"ron",
+	"json5",
+	"s-expr",
+	"hjson",
+	"csv",
+	"cbor",
+	"msgpack",
+	"pickle",
+	"bson",
+	"flexbuffers"
+]
+all-features = true
 
 [dependencies]
 thiserror = "2.0"
 serde = "1.0"
-clap = { version = "4.5", optional = true, features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 toml = { version = "0.8", optional = true, features = ["parse", "preserve_order"] }
 serde_json = { version = "1.0", optional = true }
 serde_yml = { version = "0.0.12", optional = true }
@@ -26,8 +54,7 @@ bson = { version = "2.14", optional = true }
 flexbuffers = { version = "25.2", optional = true }
 
 [features]
-default = []
-cli = ["dep:clap"]
+default = ["all-formats"]
 all-formats = [
     "toml",
     "json",

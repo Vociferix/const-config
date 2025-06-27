@@ -1,7 +1,11 @@
 [package]
 name = "const-config-macros"
+authors = ["Jack Bernard <jack.a.bernard.jr@gmail.com>"]
 version = "0.1.0"
+description = "Proc macros for `const-config` crate"
+license = "MIT OR Apache-2.0"
 edition = "2024"
+rust-version = "1.88"
 
 [lib]
 proc-macro = true

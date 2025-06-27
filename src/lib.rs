@@ -39,9 +39,7 @@ pub use const_config_macros::from_toml;
 /// Build config from a separate TOML file.
 ///
 /// [`include_toml`] accepts a path relative to the directory containing
-/// the calling crate's root directory, where `Cargo.toml` is located.
-/// Be aware that path resolution works differently from [`include_str`]
-/// due to compiler limitations on procedural macros.
+/// the file where the macro is called.
 ///
 /// # Example
 /// Given the following crate structure:
@@ -60,7 +58,7 @@ pub use const_config_macros::from_toml;
 ///
 /// use const_config::{Value, include_toml};
 ///
-/// const CONFIG: Value<'static> = include_toml!("configs/config.toml");
+/// const CONFIG: Value<'static> = include_toml!("../configs/config.toml");
 ///
 /// fn main() {}
 /// ```
@@ -90,9 +88,7 @@ pub use const_config_macros::from_json;
 /// Build config from a separate JSON file.
 ///
 /// [`include_json`] accepts a path relative to the directory containing
-/// the calling crate's root directory, where `Cargo.toml` is located.
-/// Be aware that path resolution works differently from [`include_str`]
-/// due to compiler limitations on procedural macros.
+/// the file where the macro is called.
 ///
 /// # Example
 /// Given the following crate structure:
@@ -111,7 +107,7 @@ pub use const_config_macros::from_json;
 ///
 /// use const_config::{Value, include_json};
 ///
-/// const CONFIG: Value<'static> = include_json!("configs/config.json");
+/// const CONFIG: Value<'static> = include_json!("../configs/config.json");
 ///
 /// fn main() {}
 /// ```
@@ -144,9 +140,7 @@ pub use const_config_macros::from_yaml;
 /// Build config from a separate YAML file.
 ///
 /// [`include_yaml`] accepts a path relative to the directory containing
-/// the calling crate's root directory, where `Cargo.toml` is located.
-/// Be aware that path resolution works differently from [`include_str`]
-/// due to compiler limitations on procedural macros.
+/// the file where the macro is called.
 ///
 /// # Example
 /// Given the following crate structure:
@@ -165,7 +159,7 @@ pub use const_config_macros::from_yaml;
 ///
 /// use const_config::{Value, include_yaml};
 ///
-/// const CONFIG: Value<'static> = include_yaml!("configs/config.yml");
+/// const CONFIG: Value<'static> = include_yaml!("../configs/config.yml");
 ///
 /// fn main() {}
 /// ```
@@ -359,6 +353,7 @@ const fn str_eq(a: &str, b: &str) -> bool {
 }
 
 impl<'a> Object<'a> {
+    #[doc(hidden)]
     pub const fn new<const LEN: usize>(
         entries: &'a [(&'a str, Value); LEN],
         phf_params: &'a [u32; LEN],
@@ -443,6 +438,7 @@ impl<'a> PartialEq for Object<'a> {
 }
 
 impl<'a> Map<'a> {
+    #[doc(hidden)]
     pub const fn new<const LEN: usize>(
         entries: &'a [(Value, Value); LEN],
         phf_params: &'a [u32; LEN],

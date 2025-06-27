@@ -2,7 +2,7 @@
 
 use const_config::{Date, DateTime, Time, Value};
 
-const CFG: Value<'static> = const_config::include_toml!("tests/test.toml");
+const CFG: Value<'static> = const_config::include_toml!("test.toml");
 
 #[test]
 fn const_test() {

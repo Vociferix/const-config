@@ -47,47 +47,65 @@ enum Format {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
+    #[allow(unused_variables)]
     let args = Cli::parse();
 
-    let input: Box<dyn std::io::Read> = if let Some(infile) = args.infile.as_ref() {
-        Box::new(std::io::BufReader::new(std::fs::File::open(infile)?))
-    } else {
-        Box::new(std::io::stdin().lock())
-    };
+    #[cfg(any(
+        feature = "toml",
+        feature = "json",
+        feature = "yaml",
+        feature = "ron",
+        feature = "json5",
+        feature = "s-expr",
+        feature = "hjson",
+        feature = "csv",
+        feature = "cbor",
+        feature = "msgpack",
+        feature = "pickle",
+        feature = "bson",
+        feature = "flexbuffers",
+    ))]
+    {
+        let input: Box<dyn std::io::Read> = if let Some(infile) = args.infile.as_ref() {
+            Box::new(std::io::BufReader::new(std::fs::File::open(infile)?))
+        } else {
+            Box::new(std::io::stdin().lock())
+        };
 
-    let output: Box<dyn std::io::Write> = if let Some(outfile) = args.outfile.as_ref() {
-        Box::new(std::io::BufWriter::new(std::fs::File::create(outfile)?))
-    } else {
-        Box::new(std::io::stdout().lock())
-    };
+        let output: Box<dyn std::io::Write> = if let Some(outfile) = args.outfile.as_ref() {
+            Box::new(std::io::BufWriter::new(std::fs::File::create(outfile)?))
+        } else {
+            Box::new(std::io::stdout().lock())
+        };
 
-    match args.format {
-        #[cfg(feature = "toml")]
-        Format::Toml => const_config_gen::toml::generate(input, output)?,
-        #[cfg(feature = "json")]
-        Format::Json => const_config_gen::json::generate(input, output)?,
-        #[cfg(feature = "yaml")]
-        Format::Yaml => const_config_gen::yaml::generate(input, output)?,
-        #[cfg(feature = "ron")]
-        Format::Ron => const_config_gen::ron::generate(input, output)?,
-        #[cfg(feature = "json5")]
-        Format::Json5 => const_config_gen::json5::generate(input, output)?,
-        #[cfg(feature = "s-expr")]
-        Format::SExpr => const_config_gen::s_expr::generate(input, output)?,
-        #[cfg(feature = "hjson")]
-        Format::Hjson => const_config_gen::hjson::generate(input, output)?,
-        #[cfg(feature = "csv")]
-        Format::Csv => const_config_gen::csv::generate(input, output)?,
-        #[cfg(feature = "cbor")]
-        Format::Cbor => const_config_gen::cbor::generate(input, output)?,
-        #[cfg(feature = "msgpack")]
-        Format::Msgpack => const_config_gen::msgpack::generate(input, output)?,
-        #[cfg(feature = "pickle")]
-        Format::Pickle => const_config_gen::pickle::generate(input, output)?,
-        #[cfg(feature = "bson")]
-        Format::Bson => const_config_gen::bson::generate(input, output)?,
-        #[cfg(feature = "flexbuffers")]
-        Format::Flexbuffers => const_config_gen::flexbuffers::generate(input, output)?,
+        match args.format {
+            #[cfg(feature = "toml")]
+            Format::Toml => const_config_gen::toml::generate(input, output)?,
+            #[cfg(feature = "json")]
+            Format::Json => const_config_gen::json::generate(input, output)?,
+            #[cfg(feature = "yaml")]
+            Format::Yaml => const_config_gen::yaml::generate(input, output)?,
+            #[cfg(feature = "ron")]
+            Format::Ron => const_config_gen::ron::generate(input, output)?,
+            #[cfg(feature = "json5")]
+            Format::Json5 => const_config_gen::json5::generate(input, output)?,
+            #[cfg(feature = "s-expr")]
+            Format::SExpr => const_config_gen::s_expr::generate(input, output)?,
+            #[cfg(feature = "hjson")]
+            Format::Hjson => const_config_gen::hjson::generate(input, output)?,
+            #[cfg(feature = "csv")]
+            Format::Csv => const_config_gen::csv::generate(input, output)?,
+            #[cfg(feature = "cbor")]
+            Format::Cbor => const_config_gen::cbor::generate(input, output)?,
+            #[cfg(feature = "msgpack")]
+            Format::Msgpack => const_config_gen::msgpack::generate(input, output)?,
+            #[cfg(feature = "pickle")]
+            Format::Pickle => const_config_gen::pickle::generate(input, output)?,
+            #[cfg(feature = "bson")]
+            Format::Bson => const_config_gen::bson::generate(input, output)?,
+            #[cfg(feature = "flexbuffers")]
+            Format::Flexbuffers => const_config_gen::flexbuffers::generate(input, output)?,
+        }
     }
 
     Ok(())

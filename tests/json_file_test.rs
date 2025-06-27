@@ -2,7 +2,7 @@
 
 use const_config::{Number, Value};
 
-const CFG: Value<'static> = const_config::include_json!("tests/test.json");
+const CFG: Value<'static> = const_config::include_json!("test.json");
 
 #[test]
 fn const_test() {
